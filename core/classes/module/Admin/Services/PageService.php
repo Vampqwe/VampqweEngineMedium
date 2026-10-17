@@ -1,0 +1,223 @@
+<?php
+declare(strict_types=1);
+
+namespace Core\Module\Admin\Services;
+
+use Core\System\DataBase\DataBase;
+use PDO;
+
+class PageService
+{
+    private DataBase $db;
+
+    public function __construct(DataBase $db)
+    {
+        $this->db = $db;
+    }
+
+    /**
+     * Получить все страницы с пагинацией
+     */
+    public function getPages(int $page = 1, int $perPage = 20): array
+    {
+        $offset = ($page - 1) * $perPage;
+        
+        $pages = $this->db->fetchAll(
+            "SELECT p.*, a.name as author_name 
+             FROM pages p 
+             LEFT JOIN authors a ON p.author_id = a.id 
+             ORDER BY p.updated_at DESC 
+             LIMIT {$perPage} OFFSET {$offset}"
+        );
+
+        $total = (int) $this->db->fetchColumn("SELECT COUNT(*) FROM pages");
+
+        return [
+            'pages' => $pages,
+            'total' => $total,
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalPages' => (int) ceil($total / $perPage),
+        ];
+    }
+
+    /**
+     * Получить страницу по ID (для админки)
+     */
+    public function getPage(int $id): ?array
+    {
+        return $this->db->fetchOne(
+            "SELECT p.*, a.name as author_name 
+             FROM pages p 
+             LEFT JOIN authors a ON p.author_id = a.id 
+             WHERE p.id = :id",
+            ['id' => $id]
+        );
+    }
+
+    /**
+     * Получить опубликованную страницу по slug (для фронтенда)
+     */
+    public function getPageBySlug(string $slug): ?array
+    {
+        $slug = $slug === '' ? '' : ltrim($slug, '/');
+        $slug = rtrim($slug, '/');
+
+        return $this->db->fetchOne(
+            "SELECT p.*, a.name AS author_name 
+             FROM pages p 
+             LEFT JOIN authors a ON p.author_id = a.id 
+             WHERE p.slug = :slug AND p.status = 'published' 
+             LIMIT 1",
+            ['slug' => $slug]
+        );
+    }
+
+    /**
+     * Проверить существование страницы по slug (для импорта, любой статус)
+     */
+    public function pageExistsBySlug(string $slug): bool
+    {
+        $slug = $slug === '' ? '' : ltrim($slug, '/');
+        $slug = rtrim($slug, '/');
+        
+        $count = $this->db->fetchColumn(
+            "SELECT COUNT(*) FROM pages WHERE slug = :slug",
+            ['slug' => $slug]
+        );
+        
+        return (int) $count > 0;
+    }
+
+    /**
+     * Создать страницу
+     */
+    public function createPage(array $data): int
+    {
+        $this->db->execute(
+            "INSERT INTO pages (title, description, keywords, canonical, og_title, og_description, 
+             meta_robots, og_image, reading_time, views_count, author_id, slug, content, scripts, 
+             page_type, parent_id, status, sort_order, is_in_menu, published_at) 
+             VALUES (:title, :description, :keywords, :canonical, :og_title, :og_description, 
+             :meta_robots, :og_image, :reading_time, :views_count, :author_id, :slug, :content, 
+             :scripts, :page_type, :parent_id, :status, :sort_order, :is_in_menu, :published_at)",
+            [
+                'title' => $data['title'],
+                'description' => $data['description'],
+                'keywords' => $data['keywords'] ?? null,
+                'canonical' => $data['canonical'],
+                'og_title' => $data['og_title'],
+                'og_description' => $data['og_description'],
+                'meta_robots' => $data['meta_robots'] ?? 'index, follow',
+                'og_image' => $data['og_image'] ?? null,
+                'reading_time' => $data['reading_time'] ?? null,
+                'views_count' => 0,
+                'author_id' => $data['author_id'] ?? null,
+                'slug' => $data['slug'],
+                'content' => $data['content'],
+                'scripts' => $data['scripts'] ?? null,
+                'page_type' => $data['page_type'] ?? 'article',
+                'parent_id' => $data['parent_id'] ?? null,
+                'status' => $data['status'] ?? 'draft',
+                'sort_order' => $data['sort_order'] ?? 0,
+                'is_in_menu' => $data['is_in_menu'] ?? 0,
+                'published_at' => $data['status'] === 'published' ? date('Y-m-d H:i:s') : null,
+            ]
+        );
+
+        return (int) $this->db->fetchColumn("SELECT LAST_INSERT_ID()");
+    }
+
+    /**
+     * Обновить страницу
+     */
+    public function updatePage(int $id, array $data): int
+    {
+        $status = $data['status'] ?? 'draft';
+
+        // Собираем явно, чтобы не тянуть в параметры лишние/несовпадающие ключи из $data
+        $params = [
+            'title' => $data['title'],
+            'description' => $data['description'],
+            'keywords' => $data['keywords'] ?? null,
+            'canonical' => $data['canonical'] ?? null,
+            'og_title' => $data['og_title'] ?? null,
+            'og_description' => $data['og_description'] ?? null,
+            'meta_robots' => $data['meta_robots'] ?? 'index, follow',
+            'og_image' => $data['og_image'] ?? null,
+            'reading_time' => $data['reading_time'] ?? null,
+            'author_id' => $data['author_id'] ?? null,
+            'slug' => $data['slug'],
+            'content' => $data['content'],
+            'scripts' => $data['scripts'] ?? null,
+            'page_type' => $data['page_type'] ?? 'article',
+            'parent_id' => $data['parent_id'] ?? null,
+            'status' => $status,
+            'status_check' => $status,
+            'sort_order' => $data['sort_order'] ?? 0,
+            'is_in_menu' => $data['is_in_menu'] ?? 0,
+            'id' => $id,
+        ];
+
+        return $this->db->execute(
+            "UPDATE pages SET
+             title = :title, description = :description, keywords = :keywords,
+             canonical = :canonical, og_title = :og_title, og_description = :og_description,
+             meta_robots = :meta_robots, og_image = :og_image, reading_time = :reading_time,
+             author_id = :author_id, slug = :slug, content = :content, scripts = :scripts,
+             page_type = :page_type, parent_id = :parent_id, status = :status,
+             sort_order = :sort_order, is_in_menu = :is_in_menu,
+             published_at = CASE WHEN :status_check = 'published' AND published_at IS NULL THEN NOW() ELSE published_at END,
+             updated_at = NOW()
+             WHERE id = :id",
+            $params
+        );
+    }
+
+    /**
+     * Удалить страницу
+     */
+    public function deletePage(int $id): int
+    {
+        return $this->db->execute("DELETE FROM pages WHERE id = :id", ['id' => $id]);
+    }
+
+    /**
+     * Получить всех авторов для выпадающего списка
+     */
+    public function getAuthors(): array
+    {
+        return $this->db->fetchAll("SELECT id, name FROM authors WHERE is_active = 1 ORDER BY name");
+    }
+
+    /**
+     * Генерация slug из заголовка
+     */
+    public function generateSlug(string $title): string
+    {
+        $slug = transliterator_transliterate('Any-Latin; Latin-ASCII; Lower()', $title);
+        $slug = preg_replace('/[^a-z0-9\-]/', '-', $slug);
+        $slug = preg_replace('/-+/', '-', $slug);
+        return trim($slug, '-');
+    }
+	
+	    /**
+     * Добавить Schema.org разметку для страницы
+     */
+    public function addSchemaForPage(int $pageId, array $schemas): void
+    {
+        foreach ($schemas as $schema) {
+            $this->db->execute(
+                "INSERT INTO schema_org (page_id, route, schema_type, data, priority, is_active) 
+                 VALUES (:page_id, :route, :schema_type, :data, :priority, 1)",
+                [
+                    'page_id' => $pageId,
+                    'route' => null, // Привязка по page_id приоритетнее
+                    'schema_type' => $schema['schema_type'],
+                    'data' => $schema['data'],
+                    'priority' => $schema['priority'] ?? 10,
+                ]
+            );
+        }
+    }
+}
