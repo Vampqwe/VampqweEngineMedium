@@ -6,6 +6,7 @@ namespace Core\Module\Page;
 use Core\System\Config\Config;
 use Core\System\Http\Request;
 use Core\System\Http\Response;
+use Core\System\Http\StatusCode;
 
 /**
  * Контроллер для генерации sitemap.xml
@@ -23,34 +24,41 @@ class SitemapController
 
 public function index(Request $request): Response
 {
-    // Очистка буфера вывода
-    if (ob_get_level()) {
-        ob_clean();
+    // Единая точка входа домена: базовый URL берётся из config.env (APP_BASE_URL).
+    $baseUrl = rtrim((string)$this->config->get('APP_BASE_URL', ''), '/');
+    if ($baseUrl === '') {
+        // Fallback на хост текущего запроса, чтобы <loc> никогда не строился от «битого» домена.
+        $scheme = $request->isSecure() ? 'https' : 'http';
+        $baseUrl = $scheme . '://' . $request->getHost();
     }
-    ob_start();
-    ob_clean();
 
-    $baseUrl = rtrim($this->config->get('APP_BASE_URL', 'https://localhost'), '/');
     $items = $this->sitemapService->getPagesForSitemap($baseUrl);
     $xml = $this->buildXml($items);
 
-    $lastUpdate = $this->sitemapService->getLastUpdate();
-    $etag = $lastUpdate ? md5($lastUpdate . count($items)) : md5($xml);
+    // ETag считается по фактическому содержимому XML — это исключает
+    // отдачу устаревшей карты при совпадении MAX(updated_at) и числа страниц.
+    $etag = md5($xml);
 
-    $clientEtag = $request->getHeader('If-None-Match', '');
-    if ($clientEtag === '"' . $etag . '"') {
-        http_response_code(304);
-        exit;
+    // Корректная обработка If-None-Match (в т.ч. списков и W/ префиксов).
+    $clientEtag = (string)$request->getHeader('If-None-Match', '');
+    $candidate = trim(str_replace(['W/', '"'], '', $clientEtag));
+    if ($candidate !== '' && hash_equals($etag, $candidate)) {
+        return Response::xml('', StatusCode::NOT_MODIFIED)
+            ->setEtag($etag)
+            ->setHeader('Cache-Control', 'public, max-age=3600');
     }
 
-    $response = Response::xml($xml, \Core\System\Http\StatusCode::OK);
-    
-    // ПРИНУДИТЕЛЬНАЯ УСТАНОВКА ЗАГОЛОВКА
-    $response->setHeader('Content-Type', 'application/xml; charset=UTF-8');
-    $response->setHeader('X-Robots-Tag', 'noindex, follow');
+    $response = Response::xml($xml, StatusCode::OK);
+
+    // Sitemap должна быть доступна индексации: X-Robots-Tag: noindex убран.
     $response->setCacheControl('public', 3600);
     $response->setEtag($etag);
-    
+
+    $lastmodTs = $this->sitemapService->getLastUpdateTimestamp();
+    if ($lastmodTs !== null) {
+        $response->setLastModified($lastmodTs);
+    }
+
     return $response;
 }
 

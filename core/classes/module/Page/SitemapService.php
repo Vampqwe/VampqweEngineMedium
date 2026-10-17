@@ -66,13 +66,28 @@ class SitemapService
     }
 
     /**
-     * Максимальная дата обновления (для ETag)
+     * Максимальная дата обновления (для Last-Modified / диагностических целей).
      */
     public function getLastUpdate(): ?string
     {
         return $this->db->fetchColumn(
             "SELECT MAX(updated_at) FROM pages WHERE status = 'published'"
         );
+    }
+
+    /**
+     * Unix-timestamp последней публикации (для заголовка Last-Modified).
+     */
+    public function getLastUpdateTimestamp(): ?int
+    {
+        $lastUpdate = $this->getLastUpdate();
+        if (empty($lastUpdate)) {
+            return null;
+        }
+
+        $ts = strtotime((string)$lastUpdate);
+
+        return $ts !== false ? $ts : null;
     }
 
     /**
