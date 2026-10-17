@@ -1,4 +1,8 @@
-# robots.txt для usyplenie.103vet.by
+# ВНИМАНИЕ: этот файл является запасной статической копией.
+# Основной robots.txt генерируется динамически (Core\Module\Page\RobotsController),
+# где домен берётся из config.env -> APP_BASE_URL (единая точка входа домена).
+# Если веб-сервер отдаёт именно этот файл, синхронизируйте Sitemap: с APP_BASE_URL.
+
 User-agent: *
 Allow: /
 Disallow: /__dev/
@@ -10,7 +14,7 @@ Disallow: /vendor/
 Disallow: /views/
 
 # Карта сайта
-Sitemap: https://vampqweenginemedium/sitemap.xml
+Sitemap: https://test.103vet.by/sitemap.xml
 
 # Задержки для вежливых ботов
 Crawl-delay: 1

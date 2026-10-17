@@ -169,6 +169,12 @@ class RouterServiceProvider extends ServiceProvider
 		return $controller->index($request);
 	})->name('sitemap');
 
+        // ─── ROBOTS.TXT (динамический, домен из APP_BASE_URL) ───
+        $router->get('/robots.txt', function (Request $request): Response {
+            $controller = new \Core\Module\Page\RobotsController($this->config);
+            return $controller->index();
+        })->name('robots');
+
         $router->get('/__dev/preview', function (Request $request): Response {
             if (!$this->isPreviewRequestAllowed($request)) {
                 return Response::text('Not Found', StatusCode::NOT_FOUND);
