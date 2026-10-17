@@ -22,6 +22,7 @@ declare(strict_types=1);
 
 namespace Core\System\ServiceProvider;
 
+use Core\System\Http\Request;
 use Core\System\Security\SecurityManager;
 use Core\System\Template\Template;
 
@@ -45,10 +46,20 @@ class TemplateServiceProvider extends ServiceProvider
         /** @var Template $template */
         $template = $this->container->get(Template::class);
 
+        // Текущий путь запроса — используется шаблонами (например,
+        // подсветка активного пункта меню в админ-панели).
+        // Обёрнут в try/catch: шаблон может рендериться в CLI без HTTP-запроса.
+        try {
+            $requestPath = $this->container->get(Request::class)->getPath();
+        } catch (\Throwable) {
+            $requestPath = '/';
+        }
+
         $template->shareMany([
-            'app_name'  => $this->config->get('APP_NAME', 'Достойный уход'),
-            'base_url'  => rtrim($this->config->get('APP_BASE_URL', ''), '/'),
-            'config'    => $this->config,
+            'app_name'     => $this->config->get('APP_NAME', 'Достойный уход'),
+            'base_url'     => rtrim($this->config->get('APP_BASE_URL', ''), '/'),
+            'config'       => $this->config,
+            'request_path' => $requestPath,
         ]);
     }
 }
