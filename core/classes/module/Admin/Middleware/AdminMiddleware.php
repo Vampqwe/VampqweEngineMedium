@@ -22,6 +22,7 @@ declare(strict_types=1);
 namespace Core\Module\Admin\Middleware;
 
 use Core\Module\Auth\Middleware\AuthMiddleware;
+use Core\Module\Install\Middleware\InstallMiddleware;
 use Core\Module\Install\Services\InstallService;
 use Core\System\Http\CsrfMiddleware;
 use Core\System\Http\Middleware;

@@ -28,7 +28,24 @@ switch ($action) {
         if (!is_dir(dirname($keyFile))) {
             mkdir(dirname($keyFile), 0755, true);
         }
-        $hash = hash_hmac('sha256', $key, 'vampqwe.install.dbconfig.v1');
+        // HMAC-ключ должен совпадать с InstallService: берём INSTALL_HMAC_KEY
+        // из config.env; при отсутствии — process-random (хэш переживёт только
+        // текущий запуск CLI, что безопасно: ключ генерируется тут же).
+        $hmacKey = '';
+        $envFile = $basePath . '/config.env';
+        if (is_readable($envFile)) {
+            foreach (file($envFile, FILE_IGNORE_NEW_LINES) as $line) {
+                if (preg_match('/^INSTALL_HMAC_KEY=(.*)$/', trim($line), $m)) {
+                    $hmacKey = trim($m[1], " \"'");
+                }
+            }
+        }
+        if ($hmacKey === '') {
+            $hmacKey = bin2hex(random_bytes(32));
+            fwrite(STDERR, "ВНИМАНИЕ: INSTALL_HMAC_KEY не задан в config.env - хэш сохранён с одноразовым ключом.\n");
+            fwrite(STDERR, "Задайте INSTALL_HMAC_KEY=<секрет> и перегенерируйте ключ, иначе проверка доступа не будет работать между процессами PHP.\n");
+        }
+        $hash = hash_hmac('sha256', $key, $hmacKey);
         file_put_contents($keyFile, $hash, LOCK_EX);
         chmod($keyFile, 0600);
 

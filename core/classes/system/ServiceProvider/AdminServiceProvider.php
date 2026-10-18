@@ -196,9 +196,10 @@ class AdminServiceProvider extends ServiceProvider
         });
 
         // ─── Защищённые маршруты ───
-        // Передаем InstallService в конструктор AdminMiddleware
+        // Передаем InstallService и SecurityManager в конструктор AdminMiddleware
         $admin = $router->group('/admin', new AdminMiddleware(
-            $container->get(InstallService::class)
+            $container->get(InstallService::class),
+            $container->get(SecurityManager::class)
         ));
 
         $admin->get('/', function (Request $request) use ($container): Response {
