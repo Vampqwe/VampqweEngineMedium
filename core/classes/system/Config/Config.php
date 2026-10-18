@@ -151,6 +151,16 @@ final class Config
     public static function getInstance(): self
     {
         if (self::$instance === null) {
+            // Ленивая самоинициализация: позволяет системным классам
+            // (SessionManager, CsrfToken и др.) обращаться к конфигу без
+            // жёсткой зависимости от порядка вызовов в Application.
+            // Путь по умолчанию — config.env рядом с точкой входа.
+            $fallback = getcwd() . DIRECTORY_SEPARATOR . 'config.env';
+
+            if (PathProbe::exists($fallback)) {
+                return self::init($fallback);
+            }
+
             throw new FileSystemException('Config не инициализирован. Вызовите Config::init()');
         }
 
