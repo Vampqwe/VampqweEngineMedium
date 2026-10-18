@@ -135,6 +135,22 @@ class SessionManager
     public function logoutAdmin(): void
     {
         $this->remove(self::ADMIN_KEY);
+        // Разграничение привилегий: при logout тоже регенерируем ID —
+        // старый идентификатор не должен остаться «запоминаемым» маркером.
         $this->regenerate(true);
+    }
+
+    /**
+     * Забыть одноразовые ключи троттлинга (например, счётчика просмотров)
+     * в текущей сессии. Вызывается при logout, чтобы новый посетитель на
+     * общем компьютере не наследовал состояние предыдущего пользователя.
+     */
+    public function forgetTransientMarkers(string $prefix): void
+    {
+        foreach (array_keys($_SESSION ?? []) as $key) {
+            if (is_string($key) && str_starts_with($key, $prefix)) {
+                unset($_SESSION[$key]);
+            }
+        }
     }
 }

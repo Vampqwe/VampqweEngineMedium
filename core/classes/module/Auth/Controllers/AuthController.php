@@ -118,7 +118,7 @@ class AuthController
             // ИСПРАВЛЕНО: регенерация ID сессии при входе (защита от session fixation)
             $this->session->loginAdmin($this->superAdminAuth->getSuperAdminData());
             $this->adminService->setFlash('success', 'Добро пожаловать, Супер Администратор!');
-            return Response::redirect('/admin/');
+            return Response::redirect($this->safePostLoginRedirect());
         }
 
         // 2. Проверяем обычного пользователя (из БД)
@@ -144,7 +144,7 @@ class AuthController
             );
 
             $this->adminService->setFlash('success', "Добро пожаловать, {$user['name']}!");
-            return Response::redirect('/admin/');
+            return Response::redirect($this->safePostLoginRedirect());
         }
 
         // 3. Неверные данные
@@ -153,11 +153,31 @@ class AuthController
     }
 
     /**
+     * Безопасный redirect после входа (защита от open-redirect).
+     * Принимает только внутренний относительный путь, сохранённый AuthMiddleware;
+     * произвольные/внешние URL отбрасываются.
+     */
+    private function safePostLoginRedirect(): string
+    {
+        $target = (string) ($this->session->get('redirect_after_login') ?? '');
+        $this->session->remove('redirect_after_login');
+
+        $isRelativePath = $target !== ''
+            && $target[0] === '/'
+            && !str_starts_with($target, '//')          // протокол-относительный URL (//evil.com)
+            && !preg_match('#^/\\\\#', $target)         // обфускация backslash (/\\evil.com)
+            && !preg_match('#[\r\n\x00]#', $target);    // CRLF injection в Location
+
+        return $isRelativePath ? $target : '/admin/';
+    }
+
+    /**
      * Выход из системы
      */
     public function logout(Request $request): Response
     {
         // ИСПРАВЛЕНО: снятие аутентификации + регенерация ID (flash-сообщения сохраняются)
+        $this->session->forgetTransientMarkers('viewed_page_');
         $this->session->logoutAdmin();
         $this->adminService->setFlash('success', 'Вы вышли из системы');
         return Response::redirect('/admin/login');
