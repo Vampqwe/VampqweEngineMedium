@@ -21,11 +21,14 @@ declare(strict_types=1);
 
 namespace Core\Module\Admin\Middleware;
 
+use Core\Module\Auth\Middleware\AuthMiddleware;
 use Core\Module\Install\Services\InstallService;
+use Core\System\Http\CsrfMiddleware;
 use Core\System\Http\Middleware;
 use Core\System\Http\MiddlewareStack;
 use Core\System\Http\Request;
 use Core\System\Http\Response;
+use Core\System\Security\SecurityManager;
 
 /**
  * Композитный middleware группы /admin.
@@ -34,17 +37,18 @@ use Core\System\Http\Response;
  * вызывал $next независимо, в результате финальный обработчик (контроллер)
  * выполнялся ДВАЖДЫ, а результат install-проверки терялся. Теперь цепочка
  * собирается через MiddlewareStack и обрабатывается строго последовательно:
- * InstallMiddleware → AuthMiddleware → AdminCspMiddleware → контроллер.
+ * InstallMiddleware → AuthMiddleware → CsrfMiddleware → AdminCspMiddleware → контроллер.
  */
 class AdminMiddleware implements Middleware
 {
     private MiddlewareStack $stack;
 
-    public function __construct(InstallService $installService)
+    public function __construct(InstallService $installService, SecurityManager $security)
     {
         $this->stack = (new MiddlewareStack())
             ->push(new InstallMiddleware($installService))
             ->push(new AuthMiddleware())
+            ->push(new CsrfMiddleware($security))
             ->push(new AdminCspMiddleware());
     }
 

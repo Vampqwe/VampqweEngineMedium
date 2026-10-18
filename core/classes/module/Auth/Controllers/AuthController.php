@@ -29,6 +29,7 @@ use Core\System\Http\Request;
 use Core\System\Http\Response;
 use Core\System\Http\StatusCode;
 use Core\System\Security\SecurityManager;
+use Core\System\Session\SessionManager;
 use Core\System\Template\Template;
 
 class AuthController
@@ -39,6 +40,7 @@ class AuthController
     private DataBase $db;
     private SecurityManager $security;
     private Template $template;
+    private SessionManager $session;
 
     public function __construct(
         SuperAdminAuth $superAdminAuth,
@@ -46,7 +48,8 @@ class AuthController
         Config $config,
         DataBase $db,
         SecurityManager $security,
-        Template $template
+        Template $template,
+        ?SessionManager $session = null
     ) {
         $this->superAdminAuth = $superAdminAuth;
         $this->adminService = $adminService;
@@ -54,6 +57,7 @@ class AuthController
         $this->db = $db;
         $this->security = $security;
         $this->template = $template;
+        $this->session = $session ?? new SessionManager($config);
     }
 
     /**
@@ -62,7 +66,7 @@ class AuthController
     public function showLogin(Request $request): Response
     {
         // Если уже авторизован — редирект на дашборд
-        if (isset($_SESSION['admin_user'])) {
+        if ($this->session->isAdminAuthenticated()) {
             return Response::redirect('/admin/');
         }
 
@@ -111,7 +115,8 @@ class AuthController
 
         // 1. Проверяем супер-админа (из config.env)
         if ($this->superAdminAuth->isSuperAdmin($email, $password)) {
-            $_SESSION['admin_user'] = $this->superAdminAuth->getSuperAdminData();
+            // ИСПРАВЛЕНО: регенерация ID сессии при входе (защита от session fixation)
+            $this->session->loginAdmin($this->superAdminAuth->getSuperAdminData());
             $this->adminService->setFlash('success', 'Добро пожаловать, Супер Администратор!');
             return Response::redirect('/admin/');
         }
@@ -123,13 +128,14 @@ class AuthController
         );
 
         if ($user && password_verify($password, $user['password_hash'])) {
-            $_SESSION['admin_user'] = [
+            // ИСПРАВЛЕНО: регенерация ID сессии при входе (защита от session fixation)
+            $this->session->loginAdmin([
                 'id' => $user['id'],
                 'email' => $user['email'],
                 'name' => $user['name'],
                 'role' => $user['role'],
                 'is_super' => false,
-            ];
+            ]);
 
             // Обновляем last_login_at
             $this->db->execute(
@@ -151,7 +157,8 @@ class AuthController
      */
     public function logout(Request $request): Response
     {
-        unset($_SESSION['admin_user']);
+        // ИСПРАВЛЕНО: снятие аутентификации + регенерация ID (flash-сообщения сохраняются)
+        $this->session->logoutAdmin();
         $this->adminService->setFlash('success', 'Вы вышли из системы');
         return Response::redirect('/admin/login');
     }

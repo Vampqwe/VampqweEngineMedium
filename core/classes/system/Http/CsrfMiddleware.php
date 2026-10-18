@@ -1,0 +1,49 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * VampqweEngineMedium — проприетарный PHP-движок
+ *
+ * @copyright  Copyright (c) 2024-2026. Все права защищены.
+ * @author     [Дедюля Александр Иванович / VampqweEngine]
+ * @license    Proprietary
+ * @link       https://github.com/Vampqwe/VampqweEngine.git
+ * @email          doktor_try@mail.ru
+ *
+ * Данный код является интеллектуальной собственностью автора.
+ * Любое копирование, распространение, модификация или использование
+ * без письменного разрешения правообладателя строго запрещено.
+ *
+ * This software is proprietary and confidential.
+ * Unauthorized copying, distribution, or use is strictly prohibited.
+ */
+
+
+namespace Core\System\Http;
+
+use Core\System\Security\SecurityManager;
+
+/**
+ * Единая CSRF-защита для всех небезопасных запросов (POST/PUT/PATCH/DELETE).
+ *
+ * Подключается к группам маршрутов (см. Router::group()), чтобы проверка
+ * выполнялась в одном месте, а не дублировалась в каждом контроллере.
+ * Токен берётся из поля `_csrf_token` (форма) либо заголовка `X-CSRF-Token`.
+ */
+class CsrfMiddleware implements Middleware
+{
+    public function __construct(private SecurityManager $security)
+    {
+    }
+
+    public function handle(Request $request, callable $next): Response
+    {
+        if (!$request->isSafe() && !$this->security->validateCsrf(
+            (string) $request->input('_csrf_token', '')
+        )) {
+            return Response::text('Недействительный CSRF-токен', StatusCode::FORBIDDEN);
+        }
+
+        return $next($request);
+    }
+}

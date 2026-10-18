@@ -19,8 +19,9 @@ declare(strict_types=1);
  */
 
 
-namespace Core\Module\Admin\Middleware;
+namespace Core\Module\Auth\Middleware;
 
+use Core\System\Http\Middleware;
 use Core\System\Http\Request;
 use Core\System\Http\Response;
 use Core\System\Http\StatusCode;
@@ -29,11 +30,12 @@ use Core\System\Http\StatusCode;
  * Проверяет, что пользователь является супер-админом
  * Используется для маршрутов, доступных только супер-админу
  */
-class SuperAdminMiddleware
+class SuperAdminMiddleware implements Middleware
 {
-    public function handle(Request $request, \Closure $next): Response
+    public function handle(Request $request, callable $next): Response
     {
         if (!isset($_SESSION['admin_user'])) {
+            $_SESSION['redirect_after_login'] = $request->getPath();
             return Response::redirect('/admin/login');
         }
 
