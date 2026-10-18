@@ -177,6 +177,13 @@ class Template
             return '';
         }
 
+        // Defense-in-depth: контент из БД может быть сохранён в режиме
+        // content_mode='raw' (или до появления санитизации) — прогоняем
+        // через HtmlSanitizer перед выводом посетителям. Правила —
+        // config/html-sanitizer.php. Nonce-обработка ниже остаётся для
+        // легитимных inline-скриптов шаблонов.
+        $content = \Core\System\Security\HtmlSanitizer::clean($content);
+
         $wrapperId = 'trusted-content-' . bin2hex(random_bytes(8));
         $document = new \DOMDocument('1.0', 'UTF-8');
         $previousLibxmlMode = libxml_use_internal_errors(true);
