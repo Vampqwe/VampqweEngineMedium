@@ -1,1 +1,17 @@
+# Секреты и локальные конфигурации — никогда не коммитить
 .env
+config.env
+
+# Логи и runtime-артефакты (кроме .gitkeep)
+logs/*
+!logs/.gitkeep
+storage/*
+!storage/.gitkeep
+storage/.rate_limits/
+storage/.install_seed
+storage/.installed
+storage/.install_key
+
+# Зависимости
+vendor/
+node_modules/
