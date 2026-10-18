@@ -32,17 +32,23 @@ class AdminService
 
     private DataBase $db;
 
-    public function __construct(DataBase $db)
+    /** Единая точка доступа к сессии (flash-сообщения и пр.) */
+    private \Core\System\Session\SessionManager $session;
+
+    public function __construct(DataBase $db, ?\Core\System\Session\SessionManager $session = null)
     {
         $this->db = $db;
+        $this->session = $session ?? new \Core\System\Session\SessionManager();
     }
 
     /**
-     * Установить flash-сообщение
+     * Установить flash-сообщение (через SessionManager — единая точка доступа к сессии)
      */
     public function setFlash(string $type, string $message): void
     {
-        $_SESSION['flash'][$type] = $message;
+        $flashes = $this->session->get('flash', []);
+        $flashes[$type] = $message;
+        $this->session->set('flash', $flashes);
     }
 
     /**
@@ -50,8 +56,8 @@ class AdminService
      */
     public function getFlash(): array
     {
-        $flash = $_SESSION['flash'] ?? [];
-        unset($_SESSION['flash']);
+        $flash = $this->session->get('flash', []);
+        $this->session->remove('flash');
         return $flash;
     }
 

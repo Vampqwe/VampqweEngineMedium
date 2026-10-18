@@ -27,7 +27,9 @@ use Core\Module\Admin\Services\AdminService;
 use Core\System\Config\Config;
 use Core\System\Http\Request;
 use Core\System\Http\Response;
+use Core\System\Security\HtmlSanitizer;
 use Core\System\Security\SecurityManager;
+use Core\System\Session\SessionManager;
 use Core\System\Template\Template;
 
 class ImportController
@@ -37,6 +39,10 @@ class ImportController
     private AdminService $adminService;
     private Template $template;
     private Config $config;
+    private SessionManager $session;
+
+    /** Ключ предпросмотра импорта в сессии */
+    private const PREVIEW_KEY = 'import_preview';
 
     public function __construct(
         HtmlImportParser $parser,
@@ -44,13 +50,33 @@ class ImportController
         AdminService $adminService,
         Template $template,
         Config $config,
-        private SecurityManager $security
+        private SecurityManager $security,
+        ?SessionManager $session = null
     ) {
         $this->parser = $parser;
         $this->pageService = $pageService;
         $this->adminService = $adminService;
         $this->template = $template;
         $this->config = $config;
+        $this->session = $session ?? new SessionManager($config);
+    }
+
+    /**
+     * Обработка импортированного контента перед сохранением.
+     * Режим берётся из config/page-content.php ('content_mode'), как и в
+     * PagesController: 'sanitize' — HtmlSanitizer::clean(), 'raw' — без изменений.
+     */
+    private function sanitizeImportedContent(string $html): string
+    {
+        $cfg = require dirname(__DIR__, 4) . '/config/page-content.php';
+        $mode = (string) ($cfg['content_mode'] ?? 'sanitize');
+        $maxLen = (int) ($cfg['max_content_length'] ?? 2_000_000);
+
+        if ($maxLen > 0) {
+            $html = mb_substr($html, 0, $maxLen);
+        }
+
+        return $mode === 'raw' ? $html : HtmlSanitizer::clean($html);
     }
 
     public function index(Request $request): Response
@@ -102,7 +128,7 @@ class ImportController
 
         $exists = $this->pageService->pageExistsBySlug($parsed['slug']);
 
-        $_SESSION['import_preview'] = $parsed;
+        $this->session->set(self::PREVIEW_KEY, $parsed);
 
         $html = $this->template->render('admin/import/preview', [
             'title' => 'Предпросмотр импорта',
@@ -121,7 +147,7 @@ class ImportController
             return Response::redirect('/admin/import');
         }
 
-        $parsed = $_SESSION['import_preview'] ?? null;
+        $parsed = $this->session->get(self::PREVIEW_KEY);
 
         if (!$parsed) {
             $this->adminService->setFlash('error', 'Нет данных для импорта. Загрузите файл заново.');
@@ -132,7 +158,7 @@ class ImportController
 
         if ($exists) {
             $this->adminService->setFlash('error', 'Страница с slug "' . $parsed['slug'] . '" уже существует.');
-            unset($_SESSION['import_preview']);
+            $this->session->remove(self::PREVIEW_KEY);
             return Response::redirect('/admin/import');
         }
 
@@ -140,21 +166,22 @@ class ImportController
         $baseUrl = rtrim((string)$this->config->get('APP_BASE_URL', ''), '/');
         $canonical = $baseUrl . '/' . ltrim($parsed['slug'], '/');
 
-        // JS-скрипты: путь по умолчанию ["/assets/js/main.js"] + извлечённые со страницы
-        $scripts = $parsed['scripts'] ?? ['/assets/js/main.js'];
-        if (!in_array('/assets/js/main.js', $scripts, true)) {
-            array_unshift($scripts, '/assets/js/main.js');
+        // JS-скрипты: дефолтный скрипт из config/page-content.php + извлечённые со страницы
+        $pageCfg = require dirname(__DIR__, 4) . '/config/page-content.php';
+        $defaultScript = (string) ($pageCfg['default_script'] ?? '/assets/js/main.js');
+        $scripts = $parsed['scripts'] ?? [];
+        if ($defaultScript !== '' && !in_array($defaultScript, $scripts, true)) {
+            array_unshift($scripts, $defaultScript);
         }
 
         $data = [
             'title' => $parsed['title'],
             'description' => $parsed['description'],
             'slug' => $parsed['slug'],
-            // Контент переносится в БД как есть: классы и inline-стили сохранены,
-            // теги <style> вырезаны на этапе парсинга. stripDocumentWrapper() —
-            // страховка: срезает служебную обёртку <!DOCTYPE html><html><head>...<body>,
-            // если она случайно попала в контент (в т.ч. в данных из старого preview).
-            'content' => $this->parser->stripDocumentWrapper((string)$parsed['content']),
+            // Контент импорта прогоняется через тот же санитайзер, что и ручное
+            // сохранение страниц (config/page-content.php: content_mode) —
+            // импорт чужого HTML не должен приносить stored-XSS в БД.
+            'content' => $this->sanitizeImportedContent($this->parser->stripDocumentWrapper((string)$parsed['content'])),
             'status' => 'draft',
             'page_type' => 'article',
             'meta_robots' => 'index, follow',
@@ -178,7 +205,7 @@ class ImportController
             }
         }
 
-        unset($_SESSION['import_preview']);
+        $this->session->remove(self::PREVIEW_KEY);
 
         $this->adminService->setFlash('success', 'Страница импортирована! ID: ' . $id);
 
