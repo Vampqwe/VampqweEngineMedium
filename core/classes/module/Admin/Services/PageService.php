@@ -21,6 +21,7 @@ declare(strict_types=1);
 
 namespace Core\Module\Admin\Services;
 
+use Core\System\Config\Config;
 use Core\System\DataBase\DataBase;
 use PDO;
 
@@ -31,11 +32,23 @@ use PDO;
  */
 class PageService extends \Core\Module\Page\PageService
 {
+    /** Значение по умолчанию, если ADMIN_PER_PAGE не задан в конфиге. */
+    private const DEFAULT_PER_PAGE = 20;
+
+    /** Жёсткая верхняя граница размера страницы (защита от DoS через ?per_page=). */
+    private const MAX_PER_PAGE = 100;
+
     /**
      * Получить все страницы с пагинацией
      */
-    public function getPages(int $page = 1, int $perPage = 20): array
+    public function getPages(int $page = 1, ?int $perPage = null): array
     {
+        if ($perPage === null) {
+            // Размер страницы управляется конфигом (config.env: ADMIN_PER_PAGE)
+            $perPage = Config::getInstance()->getInt('ADMIN_PER_PAGE', self::DEFAULT_PER_PAGE);
+        }
+        $perPage = max(1, min($perPage, self::MAX_PER_PAGE));
+        $page = max(1, $page);
         $offset = ($page - 1) * $perPage;
         
         $pages = $this->db->fetchAll(

@@ -21,6 +21,7 @@ declare(strict_types=1);
 
 namespace Core\Module\Install\Controllers;
 
+use Core\System\Session\SessionManager;
 use Core\Module\Install\Services\InstallService;
 use Core\Module\Admin\Services\AdminService;
 use Core\System\Application\InstalledGuard;
@@ -37,19 +38,22 @@ class InstallController
     private Config $config;
     private Template $template;
     private SecurityManager $security;
+    private SessionManager $sessions;
 
     public function __construct(
         InstallService $installService,
         AdminService $adminService,
         Config $config,
         Template $template,
-        SecurityManager $security
+        SecurityManager $security,
+        ?SessionManager $sessions = null
     ) {
         $this->installService = $installService;
         $this->adminService = $adminService;
         $this->config = $config;
         $this->template = $template;
         $this->security = $security;
+        $this->sessions = $sessions ?? new SessionManager();
     }
 
     public function step1(Request $request): Response
@@ -61,12 +65,12 @@ class InstallController
         // это идемпотентный «заякоривающий» GET (см. middleware).
         if (!$request->isPost()) {
             $headerPayload = trim((string) $request->getHeader('X-Install-Db', ''));
-            if ($headerPayload !== '' && !isset($_SESSION['install_db_enc'])) {
+            if ($headerPayload !== '' && !$this->sessions->has('install_db_enc')) {
                 $decoded = json_decode(base64_decode($headerPayload, true) ?: '', true);
                 if (is_array($decoded)) {
                     $result = $this->installService->testConnection($decoded);
                     if ($result['success']) {
-                        $_SESSION['install_db_enc'] = $this->installService->encryptDbConfig($result['config']);
+                        $this->sessions->set('install_db_enc', $this->installService->encryptDbConfig($result['config']));
                         $this->adminService->setFlash('info', 'Конфигурация БД получена из заголовка X-Install-Db.');
                     } else {
                         $this->adminService->setFlash('error', 'X-Install-Db: ' . $result['message']);
@@ -89,7 +93,7 @@ class InstallController
             if ($result['success']) {
                 // ИСПРАВЛЕНО: конфиг БД (включая пароль) шифруется перед
                 // помещением в сессию — раньше хранился в открытом виде.
-                $_SESSION['install_db_enc'] = $this->installService->encryptDbConfig($result['config']);
+                $this->sessions->set('install_db_enc', $this->installService->encryptDbConfig($result['config']));
                 return Response::redirect('/admin/install/step2');
             }
 
@@ -196,7 +200,7 @@ class InstallController
             }
 
             $dbConfig['base_url'] = rtrim($baseUrl, '/');
-            $_SESSION['install_db_enc'] = $this->installService->encryptDbConfig($dbConfig);
+            $this->sessions->set('install_db_enc', $this->installService->encryptDbConfig($dbConfig));
             $this->adminService->setFlash('success', 'Конфигурация сохранена, администратор создан. Подтвердите завершение установки.');
             return Response::redirect('/admin/install/step5');
         }
@@ -234,7 +238,7 @@ class InstallController
             }
 
             $this->installService->markAsInstalled($dbConfig);
-            unset($_SESSION['install_db_enc']);
+            $this->sessions->remove('install_db_enc');
             // Сбрасываем per-request кэш сторожа установки, чтобы следующий
             // запрос (редирект на сайт) уже видел движок установленным.
             InstalledGuard::resetCache();
@@ -257,14 +261,14 @@ class InstallController
      */
     private function requireDbConfig(): ?array
     {
-        $payload = $_SESSION['install_db_enc'] ?? null;
+        $payload = $this->sessions->get('install_db_enc') ?? null;
         if (!is_string($payload)) {
             return null;
         }
 
         $dbConfig = $this->installService->decryptDbConfig($payload);
         if ($dbConfig === null) {
-            unset($_SESSION['install_db_enc']);
+            $this->sessions->remove('install_db_enc');
         }
 
         return $dbConfig;
