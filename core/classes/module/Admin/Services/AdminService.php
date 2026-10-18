@@ -25,10 +25,13 @@ use Core\System\DataBase\DataBase;
 
 class AdminService
 {
-    // Лимиты дашборда (управляются из config/admin-dashboard.php)
+    // Лимиты дашборда по умолчанию (переопределяются через config/admin-dashboard.php)
     private const DEFAULT_RECENT_LIMIT = 5;
     private const DEFAULT_ACTIVITY_LIMIT = 4;
     private const MAX_LIMIT = 50;
+
+    /** @var array<string, int> Загруженные из конфига лимиты */
+    private array $limits;
 
     private DataBase $db;
 
@@ -39,6 +42,24 @@ class AdminService
     {
         $this->db = $db;
         $this->session = $session ?? new \Core\System\Session\SessionManager();
+        $this->limits = $this->loadLimits();
+    }
+
+    /**
+     * Прочитать лимиты дашборда из конфига; при отсутствии файла — безопасные дефолты.
+     *
+     * @return array{recent_limit: int, activity_limit: int, max_limit: int}
+     */
+    private function loadLimits(): array
+    {
+        $file = dirname(__DIR__, 4) . '/config/admin-dashboard.php';
+        $cfg = is_file($file) ? require $file : [];
+
+        return [
+            'recent_limit'   => max(1, min((int)($cfg['recent_limit'] ?? self::DEFAULT_RECENT_LIMIT), self::MAX_LIMIT)),
+            'activity_limit' => max(1, min((int)($cfg['activity_limit'] ?? self::DEFAULT_ACTIVITY_LIMIT), self::MAX_LIMIT)),
+            'max_limit'      => max(1, (int)($cfg['max_limit'] ?? self::MAX_LIMIT)),
+        ];
     }
 
     /**
@@ -80,9 +101,9 @@ class AdminService
      * Лимит жёстко ограничивается диапазоном [1, MAX_LIMIT] — конкатенация
      * в SQL безопасна только при гарантированно целочисленном значении.
      */
-    public function getRecentPages(int $limit = self::DEFAULT_RECENT_LIMIT): array
+    public function getRecentPages(?int $limit = null): array
     {
-        $limit = max(1, min($limit, self::MAX_LIMIT));
+        $limit = max(1, min($limit ?? $this->limits['recent_limit'], $this->limits['max_limit']));
         return $this->db->fetchAll(
             "SELECT id, title, status, updated_at FROM pages ORDER BY updated_at DESC LIMIT {$limit}"
         );
@@ -91,9 +112,9 @@ class AdminService
     /**
      * Получить последнюю активность (имитация — последние изменения страниц)
      */
-    public function getRecentActivity(int $limit = self::DEFAULT_ACTIVITY_LIMIT): array
+    public function getRecentActivity(?int $limit = null): array
     {
-        $limit = max(1, min($limit, self::MAX_LIMIT));
+        $limit = max(1, min($limit ?? $this->limits['activity_limit'], $this->limits['max_limit']));
         return $this->db->fetchAll(
             "SELECT id, title, status, updated_at FROM pages ORDER BY updated_at DESC LIMIT {$limit}"
         );

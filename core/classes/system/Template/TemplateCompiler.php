@@ -356,6 +356,20 @@ private function compileYield(string $template): string
      */
     public function validate(string $template, string $templateName = ''): void
     {
+        // Ограничение глубины вложенных блоков (@if внутри @if и т.п.) —
+        // защита от взрывного разрастания компилируемого кода (ранее
+        // maxNestingDepth был объявлен, но нигде не применялся).
+        $blockOpens = 0;
+        if (preg_match_all('/@(?:if|foreach|for|while|forelse|unless|isset)(?=[\s(])/', $template, $mm)) {
+            $blockOpens = count($mm[0]);
+        }
+        if ($blockOpens > $this->maxNestingDepth) {
+            throw TemplateException::invalidSyntax(
+                $templateName,
+                "Слишком много вложенных блоков: {$blockOpens} (максимум {$this->maxNestingDepth})"
+            );
+        }
+
         $pairs = [
             '@if'      => '@endif',
             '@foreach' => '@endforeach',
