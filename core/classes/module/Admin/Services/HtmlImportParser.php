@@ -29,13 +29,10 @@ use DOMXPath;
 
 class HtmlImportParser
 {
-    /** @var int Максимальный размер загружаемого файла (20 МБ) */
-    private const MAX_FILE_SIZE = 20 * 1024 * 1024;
-
-    /** @var int Максимальный размер скачиваемой картинки (10 МБ) */
-    private const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
-
     private Config $config;
+
+    /** @var array<string,mixed> Правила импорта из config/import-parser.php */
+    private array $rules;
     private string $basePath;
     private string $uploadDir;
     /** Промежуточный файл стилей: storage/neutral-style.css */
@@ -46,48 +43,14 @@ class HtmlImportParser
     /** Кэш картинок original => local (в т.ч. неудачные попытки => null) */
     private array $imageCache = [];
 	
-	/**
- * Типы schema.org, чьё поле "name" является содержательным (название
- * пункта меню, услуги, процедуры, шага, вопроса и т.п.) — НЕ подлежит
- * замене на APP_NAME. Для всех прочих типов (Organization, WebSite,
- * LocalBusiness, Physician и др.) имя бренда подставляется тотально.
- */
-private const NAME_KEEP_TYPES = [
-    // Структурные / навигационные
-    'ListItem',
-    'SiteNavigationElement',
-    'BreadcrumbList',
-    'HowToStep',
-    'HowToSection',
-    'ItemList',
-    // Коммерческие сущности
-    'Offer',
-    'Demand',
-    'Product',
-    'Service',
-    'ProgramMembership',
-    // Медицинский контент
-    'MedicalProcedure',
-    'MedicalTherapy',
-    'MedicalTest',
-    'MedicalCondition',
-    'MedicalSymptom',
-    'MedicalCause',
-    'MedicalRiskFactor',
-    'DietarySupplement',
-    'ExercisePlan',
-    // FAQ / события / медиа
-    'Question',
-    'Answer',
-    'Event',
-    'ImageObject',
-    'VideoObject',
-    'AudioObject',
-];
-
+	
     public function __construct(Config $config)
     {
         $this->config = $config;
+
+        // Единая точка управления правилами парсинга — config/import-parser.php
+        $rulesFile = dirname(__DIR__, 4) . '/config/import-parser.php';
+        $this->rules = is_file($rulesFile) ? (array) require $rulesFile : [];
         
         // Получаем реальный путь к storage (с правильным регистром)
         $configBasePath = $config->get('FS_BASE_PATH', getcwd());
@@ -98,9 +61,11 @@ private const NAME_KEEP_TYPES = [
         }
         
         $this->basePath = $realBasePath;
-        $this->uploadDir = $this->basePath . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'import';
-        // Стили импортируемых страниц складываются в промежуточный neutral-style.css
-        $this->stylesFile = $this->basePath . DIRECTORY_SEPARATOR . 'neutral-style.css';
+        $this->uploadDir = $this->basePath . DIRECTORY_SEPARATOR
+            . trim((string) ($this->rules['upload_dir'] ?? 'uploads/import'), '/');
+        // Стили импортируемых страниц складываются в промежуточный файл стилей
+        $this->stylesFile = $this->basePath . DIRECTORY_SEPARATOR
+            . trim((string) ($this->rules['styles_file'] ?? 'neutral-style.css'), '/');
 
         // Создаём директории
         if (!is_dir($this->uploadDir)) {
@@ -121,13 +86,15 @@ private const NAME_KEEP_TYPES = [
             return $errors;
         }
 
-        if ($file['size'] > self::MAX_FILE_SIZE) {
-            $errors[] = 'Файл слишком большой (максимум 20 МБ)';
+        $maxFileSize = (int) ($this->rules['max_file_size'] ?? 20 * 1024 * 1024);
+        if ($file['size'] > $maxFileSize) {
+            $errors[] = sprintf('Файл слишком большой (максимум %d МБ)', (int) round($maxFileSize / 1048576));
         }
 
+        $allowedExtensions = (array) ($this->rules['allowed_extensions'] ?? ['html', 'htm']);
         $extension = strtolower(pathinfo((string)$file['name'], PATHINFO_EXTENSION));
-        if ($extension !== 'html' && $extension !== 'htm') {
-            $errors[] = 'Допустимы только файлы .html и .htm';
+        if (!in_array($extension, $allowedExtensions, true)) {
+            $errors[] = 'Допустимы только файлы: .' . implode(', .', $allowedExtensions);
         }
 
         return $errors;
@@ -451,7 +418,7 @@ private function normalizeSchemaNames(array $node): array
             // Поддержка полностью квалифицированных IRIs вида https://schema.org/ListItem
             $slashPos = strrpos($type, '/');
             $short = $slashPos === false ? $type : substr($type, $slashPos + 1);
-            if (in_array($short, self::NAME_KEEP_TYPES, true)) {
+            if (in_array($short, (array) ($this->rules['name_keep_types'] ?? []), true)) {
                 $keepName = true;
                 break;
             }
@@ -769,8 +736,8 @@ private function normalizeSchemaUrls(array $node): array
 
             $context = stream_context_create([
                 'http' => [
-                    'timeout' => 10,
-                    'max_redirects' => 3,
+                    'timeout' => (int) ($this->rules['image_timeout_s'] ?? 10),
+                    'max_redirects' => (int) ($this->rules['image_max_redirects'] ?? 3),
                     'user_agent' => 'VampqweEngine Importer/1.0',
                 ],
                 'ssl' => [
@@ -784,7 +751,7 @@ private function normalizeSchemaUrls(array $node): array
                 return null;
             }
 
-            if (strlen($imageData) > self::MAX_IMAGE_SIZE) {
+            if (strlen($imageData) > (int) ($this->rules['max_image_size'] ?? 10 * 1024 * 1024)) {
                 $this->warnings[] = 'Картинка слишком большая, пропущена: ' . $url;
                 return null;
             }

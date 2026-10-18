@@ -31,6 +31,24 @@ namespace Core\System\Security;
  */
 class HtmlSanitizer
 {
+    /** @var array<string,mixed>|null Кэш загруженного конфига правил санитизации */
+    private static ?array $config = null;
+
+    /**
+     * Правила санитизации вынесены в config/html-sanitizer.php
+     * (значения по умолчанию сохранены как fallback на случай отсутствия файла).
+     *
+     * @return array<string,mixed>
+     */
+    private static function config(): array
+    {
+        if (self::$config === null) {
+            $path = dirname(__DIR__, 4) . '/config/html-sanitizer.php';
+            self::$config = is_file($path) ? require $path : [];
+        }
+        return self::$config;
+    }
+
     /** Теги, полностью удаляемые вместе с содержимым */
     private const REMOVE_WITH_CONTENT = [
         'script', 'style', 'noscript', 'template', 'head', 'meta', 'link',
@@ -38,7 +56,7 @@ class HtmlSanitizer
         'input', 'button', 'select', 'textarea', 'keygen', 'svg', 'math', 'base',
     ];
 
-    /** Разрешённые теги */
+    /** Разрешённые теги (переопределяются конфигом html-sanitizer.php) */
     private const ALLOWED_TAGS = [
         'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
         'p', 'br', 'hr', 'div', 'span',
@@ -71,13 +89,23 @@ class HtmlSanitizer
 
     public static function clean(string $html): string
     {
-        return self::purify($html, self::ALLOWED_TAGS, self::allowedAttributes());
+        $cfg = self::config();
+        return self::purify(
+            $html,
+            (array) ($cfg['allowed_tags'] ?? self::ALLOWED_TAGS),
+            self::allowedAttributes()
+        );
     }
 
     public static function cleanStrict(string $html): string
     {
         // Совместимо со старым поведением: HTML.Allowed = 'p,br,strong,em,a[href|title]'
-        return self::purify($html, self::STRICT_ALLOWED_TAGS, ['a' => ['href', 'title']]);
+        $cfg = self::config();
+        return self::purify(
+            $html,
+            (array) ($cfg['strict_allowed_tags'] ?? self::STRICT_ALLOWED_TAGS),
+            (array) ($cfg['strict_allowed_attributes'] ?? ['a' => ['href', 'title']])
+        );
     }
 
     public static function stripTags(string $html): string
@@ -242,9 +270,14 @@ class HtmlSanitizer
         }
     }
 
-    /** Валидные URL-атрибуты каждого тега */
+    /** Валидные URL-атрибуты каждого тега (переопределяются конфигом) */
     private static function allowedAttributes(): array
     {
+        $cfg = self::config();
+        if (isset($cfg['allowed_attributes']) && is_array($cfg['allowed_attributes'])) {
+            return $cfg['allowed_attributes'];
+        }
+
         $map = ['*' => self::GLOBAL_ATTRS];
         foreach (self::ALLOWED_TAGS as $tag) {
             $map[$tag] = [];
@@ -279,8 +312,10 @@ class HtmlSanitizer
         $stripped = html_entity_decode($stripped, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $lower = mb_strtolower(rawurldecode($stripped));
 
+        $schemes = (array) (self::config()['dangerous_url_schemes'] ?? self::DANGEROUS_URL_SCHEMES);
+
         // Опасная схема может стоять не в начале: "anything:javascript:alert(1)"
-        if (preg_match('/(?:^|[a-z][a-z0-9+.-]*:)\s*(' . implode('|', self::DANGEROUS_URL_SCHEMES) . ')\s*:/', $lower)) {
+        if (preg_match('/(?:^|[a-z][a-z0-9+.-]*:)\s*(' . implode('|', $schemes) . ')\s*:/', $lower)) {
             return false;
         }
 
