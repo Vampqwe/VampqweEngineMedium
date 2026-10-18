@@ -27,6 +27,7 @@ use Core\System\Http\Request;
 use Core\System\Http\Response;
 use Core\System\Http\StatusCode;
 use Core\System\Security\SecurityManager;
+use Core\System\Session\SessionManager;
 
 /**
  * Middleware доступа к мастеру установки.
@@ -93,9 +94,7 @@ class InstallAccessMiddleware implements Middleware
         // мастер работает по сессии без ключа в URL. Это решает проблему
         // хостингов за балансировщиком/CDN, где REMOTE_ADDR меняется от
         // запроса к запросу и любая привязка к IP ненадёжна.
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            $_SESSION['install_key_verified'] = true;
-        }
+        $this->markInstallVerified();
 
         // Если ключ пришёл в URL (?key=...) — редиректим на тот же путь без
         // параметра, чтобы секрет не остался в истории браузера, логах
@@ -121,7 +120,7 @@ class InstallAccessMiddleware implements Middleware
     private function isInstallVerifiedInSession(): bool
     {
         return session_status() === PHP_SESSION_ACTIVE
-            && ($_SESSION['install_key_verified'] ?? null) === true;
+            && $this->session()->get('install_key_verified') === true;
     }
 
     /**
@@ -159,14 +158,31 @@ class InstallAccessMiddleware implements Middleware
         }
     }
 
+    /** Единая точка доступа к сессии модуля (без прямых обращений к $_SESSION). */
+    private function session(): SessionManager
+    {
+        static $manager = null;
+        return $manager ??= new SessionManager();
+    }
+
+    private function markInstallVerified(): void
+    {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $this->session()->set('install_key_verified', true);
+        }
+    }
+
     private function isAdminSessionAuthorized(): bool
     {
-        if (session_status() !== PHP_SESSION_ACTIVE || !isset($_SESSION['admin_user'])) {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
             return false;
         }
 
-        /** @var array{role?: string, is_super?: bool} $user */
-        $user = $_SESSION['admin_user'];
+        /** @var array{role?: string, is_super?: bool}|null $user */
+        $user = $this->session()->adminUser();
+        if ($user === null) {
+            return false;
+        }
 
         return ($user['is_super'] ?? false) === true
             || in_array($user['role'] ?? '', ['admin', 'super_admin'], true);

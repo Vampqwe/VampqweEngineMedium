@@ -24,17 +24,23 @@ namespace Core\Module\Admin\Controllers;
 use Core\Module\Admin\Services\AdminService;
 use Core\System\Http\Request;
 use Core\System\Http\Response;
+use Core\System\Session\SessionManager;
 use Core\System\Template\Template;
 
 class DashboardController
 {
     private AdminService $adminService;
     private Template $template;
+    private SessionManager $session;
 
-    public function __construct(AdminService $adminService, Template $template)
-    {
+    public function __construct(
+        AdminService $adminService,
+        Template $template,
+        ?SessionManager $session = null
+    ) {
         $this->adminService = $adminService;
         $this->template = $template;
+        $this->session = $session ?? new SessionManager();
     }
 
     public function index(Request $request): Response
@@ -43,7 +49,7 @@ class DashboardController
         $recentPages = $this->adminService->getRecentPages(5);
         $recentActivity = $this->adminService->getRecentActivity(4);
         $flash = $this->adminService->getFlash();
-        $user = $_SESSION['admin_user'] ?? null;
+        $user = $this->session->adminUser();
 
         $html = $this->template->render('admin/pages/dashboard', [
             'title' => 'Дашборд',

@@ -24,13 +24,25 @@ namespace Core\Module\Auth\Middleware;
 use Core\System\Http\Request;
 use Core\System\Http\Response;
 use Core\System\Http\Middleware;
+use Core\System\Session\SessionManager;
 
+/**
+ * Проверка аутентификации админ-пользователя.
+ * Доступ к сессии — только через SessionManager (единая точка управления сессиями).
+ */
 class AuthMiddleware implements Middleware
 {
+    private SessionManager $session;
+
+    public function __construct(?SessionManager $session = null)
+    {
+        $this->session = $session ?? new SessionManager();
+    }
+
     public function handle(Request $request, callable $next): Response
     {
-        if (!isset($_SESSION['admin_user'])) {
-            $_SESSION['redirect_after_login'] = $request->getPath();
+        if (!$this->session->isAdminAuthenticated()) {
+            $this->session->set('redirect_after_login', $request->getPath());
             return Response::redirect('/admin/login');
         }
 

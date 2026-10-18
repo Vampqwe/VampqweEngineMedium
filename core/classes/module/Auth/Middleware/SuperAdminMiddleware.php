@@ -25,21 +25,31 @@ use Core\System\Http\Middleware;
 use Core\System\Http\Request;
 use Core\System\Http\Response;
 use Core\System\Http\StatusCode;
+use Core\System\Session\SessionManager;
 
 /**
  * Проверяет, что пользователь является супер-админом
- * Используется для маршрутов, доступных только супер-админу
+ * Используется для маршрутов, доступных только супер-админу.
+ * Единая точка доступа к сессии — через SessionManager (без прямых $_SESSION).
  */
 class SuperAdminMiddleware implements Middleware
 {
+    private SessionManager $session;
+
+    public function __construct(?SessionManager $session = null)
+    {
+        $this->session = $session ?? new SessionManager();
+    }
+
     public function handle(Request $request, callable $next): Response
     {
-        if (!isset($_SESSION['admin_user'])) {
-            $_SESSION['redirect_after_login'] = $request->getPath();
+        if (!$this->session->isAdminAuthenticated()) {
+            $this->session->set('redirect_after_login', $request->getPath());
             return Response::redirect('/admin/login');
         }
 
-        if (!($_SESSION['admin_user']['is_super'] ?? false)) {
+        $user = $this->session->adminUser() ?? [];
+        if (!($user['is_super'] ?? false)) {
             return Response::text('Доступ запрещён. Требуется роль супер-администратора.', StatusCode::FORBIDDEN);
         }
 
