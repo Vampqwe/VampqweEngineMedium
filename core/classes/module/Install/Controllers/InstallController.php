@@ -19,9 +19,9 @@ declare(strict_types=1);
  */
 
 
-namespace Core\Module\Admin\Controllers;
+namespace Core\Module\Install\Controllers;
 
-use Core\Module\Admin\Services\InstallService;
+use Core\Module\Install\Services\InstallService;
 use Core\Module\Admin\Services\AdminService;
 use Core\System\Application\InstalledGuard;
 use Core\System\Config\Config;

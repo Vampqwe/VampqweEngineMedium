@@ -19,7 +19,7 @@ declare(strict_types=1);
  */
 
 
-namespace Core\Module\Admin\Middleware;
+namespace Core\Module\Auth\Middleware;
 
 use Core\System\Http\Request;
 use Core\System\Http\Response;

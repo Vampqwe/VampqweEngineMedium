@@ -19,9 +19,9 @@ declare(strict_types=1);
  */
 
 
-namespace Core\Module\Admin\Controllers;
+namespace Core\Module\Auth\Controllers;
 
-use Core\Module\Admin\Services\SuperAdminAuth;
+use Core\Module\Auth\Services\SuperAdminAuth;
 use Core\Module\Admin\Services\AdminService;
 use Core\System\Config\Config;
 use Core\System\DataBase\DataBase;
