@@ -99,10 +99,14 @@ class SqlSanitizer
 
     /**
      * Экранировать строковое значение (если нельзя использовать prepared statements)
+     *
+     * addslashes() недостаточен при некоторых charset (GBK и т.п.), поэтому
+     * экранируем реальные опасные символы: обратный слэш и одинарную кавычку
+     * (удвоение — стандарт SQL-escaping для MySQL).
      */
     public function escapeString(string $value): string
     {
-        return addslashes($value);
+        return str_replace(['\\', "'"], ['\\\\', "''"], $value);
     }
 
     /**
