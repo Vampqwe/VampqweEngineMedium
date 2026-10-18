@@ -187,7 +187,27 @@ class Request
 
     public function getHost(): string
     {
-        return $this->getHeader(Header::HOST) ?? $this->server['SERVER_NAME'] ?? 'localhost';
+        $host = $this->getHeader(Header::HOST) ?? $this->server['SERVER_NAME'] ?? 'localhost';
+
+        // Allowlist доменов из config.env (APP_ALLOWED_HOSTS, через запятую).
+        // Host-заголовок контролируется клиентом: без проверки возможны
+        // cache poisoning и фишинговые редиректы на чужой домен.
+        $allowed = array_filter(array_map(
+            'trim',
+            explode(',', strtolower((string) $this->config->get('APP_ALLOWED_HOSTS', '')))
+        ));
+
+        if ($allowed !== []) {
+            $normalized = strtolower(preg_replace('/:\d+$/', '', $host) ?? $host);
+
+            if (!in_array($normalized, $allowed, true)) {
+                // Чужой Host — возвращаем первый разрешённый домен,
+                // чтобы генерация URL/редиректы никогда не использовали host атакующего.
+                return $allowed[0];
+            }
+        }
+
+        return $host;
     }
 
     public function getPort(): int

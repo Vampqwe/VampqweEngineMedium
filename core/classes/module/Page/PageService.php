@@ -150,10 +150,36 @@ class PageService
     }
 
     /**
-     * Увеличить счетчик просмотров
+     * Увеличить счетчик просмотров.
+     *
+     * Троттлинг «страница+IP» (config/page-content.php: views): раньше
+     * каждый GET выполнял UPDATE в БД, что позволяло ботам раздувать
+     * счётчик и создавать гонку обновлений на горячей строке.
      */
     public function incrementViews(int $pageId): void
     {
+        /** @var array<string,mixed> $viewsCfg */
+        $viewsCfg = (array) ($this->pageConfig('views') ?? []);
+
+        if (($viewsCfg['count_enabled'] ?? true) !== true) {
+            return;
+        }
+
+        $throttle = max(0, (int) ($viewsCfg['throttle_seconds'] ?? 300));
+
+        if ($throttle > 0 && PHP_SAPI !== 'cli') {
+            // Маркер живёт в сессии посетителя; при отсутствии активной
+            // сессии просмотр засчитывается как обычно (fail-open для UX).
+            $markerKey = 'viewed_page_' . $pageId;
+            $marker = isset($_SESSION[$markerKey]) ? (int) $_SESSION[$markerKey] : 0;
+
+            if (time() - $marker < $throttle) {
+                return;
+            }
+
+            $_SESSION[$markerKey] = time();
+        }
+
         try {
             $this->db->execute(
                 "UPDATE pages SET views_count = views_count + 1 WHERE id = :id",
