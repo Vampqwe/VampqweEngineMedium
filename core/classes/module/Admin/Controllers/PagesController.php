@@ -23,8 +23,10 @@ namespace Core\Module\Admin\Controllers;
 
 use Core\Module\Admin\Services\PageService;
 use Core\Module\Admin\Services\AdminService;
+use Core\System\Config\Config;
 use Core\System\Http\Request;
 use Core\System\Http\Response;
+use Core\System\Security\HtmlSanitizer;
 use Core\System\Security\SecurityManager;
 use Core\System\Template\Template;
 
@@ -54,6 +56,28 @@ class PagesController
     private function csrfToken(): string
     {
         return $this->security->getCsrfToken()->getToken();
+    }
+
+    /**
+     * Обработка контента страницы перед сохранением.
+     *
+     * Режим управляется конфигом config/page-content.php ('content_mode'):
+     *  - 'sanitize' (по умолчанию): HtmlSanitizer::clean() — закрывает
+     *    stored-XSS от редакторов; скрипты/iframe/онатут-обработчики вырезаются;
+     *  - 'raw': сохранять как есть (только полностью доверенное окружение).
+     * Дополнительно урезается до max_content_length (защита от раздувания БД).
+     */
+    private function sanitizeContent(string $html): string
+    {
+        $cfg = require dirname(__DIR__, 4) . '/config/page-content.php';
+        $mode = (string) ($cfg['content_mode'] ?? 'sanitize');
+        $maxLen = (int) ($cfg['max_content_length'] ?? 2_000_000);
+
+        if ($maxLen > 0) {
+            $html = mb_substr($html, 0, $maxLen);
+        }
+
+        return $mode === 'raw' ? $html : HtmlSanitizer::clean($html);
     }
 
     public function index(Request $request): Response
@@ -111,7 +135,7 @@ class PagesController
             'reading_time' => $request->input('reading_time') ? (int) $request->input('reading_time') : null,
             'author_id' => $request->input('author_id') ? (int) $request->input('author_id') : null,
             'slug' => trim($request->input('slug', '')),
-            'content' => $request->input('content', ''), // БЕЗ санитизации
+            'content' => $this->sanitizeContent((string) $request->input('content', '')),
             'scripts' => $request->input('scripts') ? json_encode(explode(',', $request->input('scripts'))) : null,
             'page_type' => $request->input('page_type', 'article'),
             'parent_id' => $request->input('parent_id') ? (int) $request->input('parent_id') : null,
@@ -185,7 +209,7 @@ class PagesController
             'reading_time' => $request->input('reading_time') ? (int) $request->input('reading_time') : null,
             'author_id' => $request->input('author_id') ? (int) $request->input('author_id') : null,
             'slug' => trim($request->input('slug', '')),
-            'content' => $request->input('content', ''), // БЕЗ санитизации
+            'content' => $this->sanitizeContent((string) $request->input('content', '')),
             'scripts' => $request->input('scripts') ? json_encode(explode(',', $request->input('scripts'))) : null,
             'page_type' => $request->input('page_type', 'article'),
             'parent_id' => $request->input('parent_id') ? (int) $request->input('parent_id') : null,

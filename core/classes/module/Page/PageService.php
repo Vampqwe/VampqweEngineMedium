@@ -123,16 +123,30 @@ class PageService
         // Обратная совместимость: единый список схем
         $page['schema_org'] = array_merge($page['global_schema'], $page['page_schema']);
 
-        // Декодируем скрипты; путь по умолчанию — /assets/js/main.js
+        // Декодируем скрипты; путь дефолтного скрипта — из config/page-content.php
         $scripts = !empty($page['scripts'])
             ? json_decode($page['scripts'], true) ?: []
             : [];
-        if (!in_array('/assets/js/main.js', $scripts, true)) {
-            $scripts[] = '/assets/js/main.js';
+        $defaultScript = (string) ($this->pageConfig('default_script') ?? '/assets/js/main.js');
+        if ($defaultScript !== '' && !in_array($defaultScript, $scripts, true)) {
+            $scripts[] = $defaultScript;
         }
         $page['scripts'] = $scripts;
 
         return $page;
+    }
+
+    /**
+     * Значение из конфига правил страниц (config/page-content.php).
+     */
+    private function pageConfig(string $key): mixed
+    {
+        static $cfg = null;
+        if ($cfg === null) {
+            $path = dirname(__DIR__, 4) . '/config/page-content.php';
+            $cfg = is_file($path) ? require $path : [];
+        }
+        return $cfg[$key] ?? null;
     }
 
     /**

@@ -31,8 +31,14 @@ use Throwable;
 
 class InstallService
 {
-    /** Ключ для шифрования временного конфига БД в сессии мастера установки. */
-    private const SESSION_ENC_KEY = 'vampqwe.install.dbconfig.v1';
+    /**
+     * Ключ для шифрования временного конфига БД в сессии мастера установки.
+     * Управляется через config.env: INSTALL_HMAC_KEY (секрет, не должен
+     * попадать в репозиторий). При отсутствии — process-random fallback:
+     * payload переживает только один процесс (безопасно, но мастер требует
+     * sticky-сессий; штатная установка всё равно идёт в одном воркере).
+     */
+    private string $hmacKey;
 
     /** ID сессии, для которого выдан текущий CSRF-токен (привязка токена к сессии). */
     private ?string $csrfBoundSessionId = null;
@@ -68,6 +74,11 @@ class InstallService
             $base = dirname(__DIR__, 5);
         }
         $this->basePath = $base;
+        // HMAC-ключ: из config.env (INSTALL_HMAC_KEY), иначе process-random.
+        $configuredKey = trim((string) $config->get('INSTALL_HMAC_KEY', ''));
+        $this->hmacKey = $configuredKey !== ''
+            ? $configuredKey
+            : bin2hex(random_bytes(32));
         // Долгоживущий случайный seed: привязывает производный ключ
         // шифрования к данному экземпляру приложения. Seed сохраняется
         // в storage/.install_seed, чтобы оставаться стабильным между
@@ -131,7 +142,7 @@ class InstallService
      */
     public function storeActivationKeyHash(string $key): bool
     {
-        $hash = hash_hmac('sha256', $key, self::SESSION_ENC_KEY);
+        $hash = hash_hmac('sha256', $key, $this->hmacKey);
         $path = $this->basePath . '/storage/.install_key';
 
         return file_put_contents($path, $hash, LOCK_EX) !== false
@@ -153,7 +164,7 @@ class InstallService
             return false;
         }
 
-        return hash_equals($stored, hash_hmac('sha256', $providedKey, self::SESSION_ENC_KEY));
+        return hash_equals($stored, hash_hmac('sha256', $providedKey, $this->hmacKey));
     }
 
     // ─── Шифрованное хранение конфига БД между шагами мастера ───
@@ -233,7 +244,7 @@ class InstallService
 
         return hash_pbkdf2(
             'sha256',
-            $sessionId . '|' . self::SESSION_ENC_KEY,
+            $sessionId . '|' . $this->hmacKey,
             $this->csrfSeed,
             1000,
             32,
