@@ -214,7 +214,9 @@ class TemplateCompiler
         $pattern = '/@section\s*\(\s*[\'"]([^\'"]+)[\'"]\s*(?:,\s*(true|false))?\s*\)(.*?)@endsection/s';
 
         return preg_replace_callback($pattern, function ($matches) {
-            $name = $matches[1];
+            // Экранируем кавычки: имя секции подставляется в PHP-код шаблона,
+            // без этого @section("a'");eval-payload(...) превращается в инъекцию кода.
+            $name = addslashes($matches[1]);
             $overwrite = ($matches[2] ?? 'true') === 'true';
             $content = $matches[3];
             return "<?php \$__template->startSection('{$name}', {$overwrite}); ?>{$content}<?php \$__template->endSection('{$name}'); ?>";
@@ -226,7 +228,7 @@ private function compileYield(string $template): string
     return preg_replace_callback(
         "/@yield\s*\(\s*['\"]([^'\"]+)['\"]\s*(?:,\s*(.+?))?\s*\)/",
         function ($matches) {
-            $name = $matches[1];
+            $name = addslashes($matches[1]); // защита от выхода из строкового литерала
             $default = isset($matches[2]) ? trim($matches[2]) : '';
 
             if ($default === '') {
@@ -250,7 +252,7 @@ private function compileYield(string $template): string
         return preg_replace_callback(
             "/@include\s*\(\s*['\"]([^'\"]+)['\"]\s*(?:,\s*(\[[^\]]*\]))?\s*\)/",
             function ($matches) {
-                $path = $matches[1];
+                $path = addslashes($matches[1]); // защита от выхода из строкового литерала
                 $data = $matches[2] ?? '[]';
                 return "<?php echo \$__template->renderPartial('{$path}', {$data}); ?>";
             },
