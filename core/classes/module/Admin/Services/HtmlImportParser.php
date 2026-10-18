@@ -1,6 +1,24 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * VampqweEngineMedium — проприетарный PHP-движок
+ *
+ * @copyright  Copyright (c) 2024-2026. Все права защищены.
+ * @author     [Дедюля Александр Иванович / VampqweEngine]
+ * @license    Proprietary
+ * @link       https://github.com/Vampqwe/VampqweEngine.git
+ * @email	   doktor_try@mail.ru
+ *
+ * Данный код является интеллектуальной собственностью автора.
+ * Любое копирование, распространение, модификация или использование
+ * без письменного разрешения правообладателя строго запрещено.
+ *
+ * This software is proprietary and confidential.
+ * Unauthorized copying, distribution, or use is strictly prohibited.
+ */
+
+
 namespace Core\Module\Admin\Services;
 
 use Core\System\Config\Config;
@@ -134,6 +152,10 @@ private const NAME_KEEP_TYPES = [
         $this->removeStyleTags($doc, $xpath);
         // 3. Извлекаем контент: инлайн-стили (style="...") и классы сохраняются как есть
         $content = $this->extractContent($html, $doc, $xpath);
+        // Страховка: служебная обёртка <!DOCTYPE html><html><head>...<body>, которую
+        // мы сами добавляем для корректной обработки кодировки в loadHTML(), никогда
+        // не должна попадать в итоговый контент страницы.
+        $content = $this->stripDocumentWrapper($content);
         // 4. Скачиваем внешние картинки и заменяем ссылки на локальные пути
         $content = $this->downloadAndReplaceImages($content);
         // 5. Собираем пути JS-скриптов (по умолчанию /assets/js/main.js)
@@ -523,12 +545,71 @@ private function normalizeSchemaUrls(array $node): array
         $this->collectStyles($fragXp);
         $this->removeStyleTags($fragDoc, $fragXp);
 
-        $html = trim((string)$fragDoc->saveHTML());
+        // Сохраняем ТОЛЬКО содержимое <body> — иначе в контент вместе с обёрткой
+        // попадает служебный <!DOCTYPE html><html><head><meta ...></head><body> ... </body></html>,
+        // который мы сами добавили для корректной обработки кодировки.
+        $html = $this->extractInnerBody($fragDoc);
 
         // Контроль целостности: текст результата должен совпадать с текстом raw-среза
         $this->verifyContentIntegrity($html, $rawFragment);
 
         return $html;
+    }
+
+    /**
+     * Возвращает внутреннее содержимое <body> документа без служебной обёртки
+     * (<!DOCTYPE html><html><head>...</head><body> ... </body></html>).
+     */
+    private function extractInnerBody(DOMDocument $doc): string
+    {
+        $bodyList = $doc->getElementsByTagName('body');
+        if ($bodyList->length === 0) {
+            return trim((string)$doc->saveHTML());
+        }
+
+        $body = $bodyList->item(0);
+        $inner = '';
+        foreach ($body->childNodes as $child) {
+            $inner .= $doc->saveHTML($child);
+        }
+
+        return trim($inner);
+    }
+
+    /**
+     * Страховка: срезает служебную HTML-обёртку, которая не должна попадать в контент.
+     * Убирает ведущие <!DOCTYPE ...>, <html ...>, <head>...</head>, <body ...>
+     * и закрывающие </body>, </html> — как в конце строки, так и сразу после
+     * обёртки (вариант «<!DOCTYPE...><html><head>..</head><body> </body></html>КОНТЕНТ»,
+     * который даёт loadHTML() при пустом/вынесенном содержимом <body>).
+     */
+    public function stripDocumentWrapper(string $content): string
+    {
+        $patterns = [
+            '~^\s*<!DOCTYPE[^>]*>\s*~i',
+            '~^\s*<html(?:\s[^>]*)?>\s*~i',
+            '~^\s*<head(?:\s[^>]*)?>.*?</head>\s*~is',
+            // Пустой "body-хвост" обёртки целиком: <body> </body></html> (пробел/перепад
+            // между тегами допустим). ВАЖНО: этот шаблон должен стоять ДО одиночного
+            // '<body>', иначе он съест только открывающий тег и хвост </body></html>
+            // повиснет в начале контента.
+            '~^\s*<body(?:\s[^>]*)?>\s*</body>\s*</html>\s*~i',
+            '~^\s*<body(?:\s[^>]*)?>\s*~i',
+            // Закрывающий хвост документа
+            '~\s*</body>\s*</html>\s*$~i',
+            '~\s*</body>\s*$~i',
+            '~\s*</html>\s*$~i',
+        ];
+
+        do {
+            $before = $content;
+            foreach ($patterns as $p) {
+                $content = preg_replace($p, '', $content, 1) ?? $content;
+            }
+            $content = trim($content);
+        } while ($content !== $before);
+
+        return $content;
     }
 
     /**

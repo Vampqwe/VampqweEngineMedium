@@ -1,6 +1,24 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * VampqweEngineMedium — проприетарный PHP-движок
+ *
+ * @copyright  Copyright (c) 2024-2026. Все права защищены.
+ * @author     [Дедюля Александр Иванович / VampqweEngine]
+ * @license    Proprietary
+ * @link       https://github.com/Vampqwe/VampqweEngine.git
+ * @email	   doktor_try@mail.ru
+ *
+ * Данный код является интеллектуальной собственностью автора.
+ * Любое копирование, распространение, модификация или использование
+ * без письменного разрешения правообладателя строго запрещено.
+ *
+ * This software is proprietary and confidential.
+ * Unauthorized copying, distribution, or use is strictly prohibited.
+ */
+
+
 namespace Core\Module\Page;
 
 use Core\System\DataBase\DataBase;
@@ -66,13 +84,28 @@ class SitemapService
     }
 
     /**
-     * Максимальная дата обновления (для ETag)
+     * Максимальная дата обновления (для Last-Modified / диагностических целей).
      */
     public function getLastUpdate(): ?string
     {
         return $this->db->fetchColumn(
             "SELECT MAX(updated_at) FROM pages WHERE status = 'published'"
         );
+    }
+
+    /**
+     * Unix-timestamp последней публикации (для заголовка Last-Modified).
+     */
+    public function getLastUpdateTimestamp(): ?int
+    {
+        $lastUpdate = $this->getLastUpdate();
+        if (empty($lastUpdate)) {
+            return null;
+        }
+
+        $ts = strtotime((string)$lastUpdate);
+
+        return $ts !== false ? $ts : null;
     }
 
     /**

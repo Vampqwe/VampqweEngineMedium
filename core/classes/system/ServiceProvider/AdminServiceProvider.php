@@ -1,6 +1,24 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * VampqweEngineMedium — проприетарный PHP-движок
+ *
+ * @copyright  Copyright (c) 2024-2026. Все права защищены.
+ * @author     [Дедюля Александр Иванович / VampqweEngine]
+ * @license    Proprietary
+ * @link       https://github.com/Vampqwe/VampqweEngine.git
+ * @email	   doktor_try@mail.ru
+ *
+ * Данный код является интеллектуальной собственностью автора.
+ * Любое копирование, распространение, модификация или использование
+ * без письменного разрешения правообладателя строго запрещено.
+ *
+ * This software is proprietary and confidential.
+ * Unauthorized copying, distribution, or use is strictly prohibited.
+ */
+
+
 namespace Core\System\ServiceProvider;
 
 use Core\System\Http\Router;
@@ -23,6 +41,8 @@ use Core\Module\Admin\Services\PageService;
 use Core\System\Security\HtmlSanitizer;
 use Core\Module\Admin\Controllers\ImportController;
 use Core\Module\Admin\Services\HtmlImportParser;
+use Core\Module\Admin\Controllers\MenuController;
+use Core\Module\Admin\Services\MenuAdminService;
 
 class AdminServiceProvider extends ServiceProvider
 {
@@ -64,6 +84,9 @@ class AdminServiceProvider extends ServiceProvider
 		
 		$this->container->singleton(HtmlImportParser::class, fn() => 
 			new HtmlImportParser($config)
+		);
+		$this->container->singleton(MenuAdminService::class, fn() =>
+			new MenuAdminService($db)
 		);
     }
 
@@ -287,5 +310,48 @@ class AdminServiceProvider extends ServiceProvider
 			);
 			return $controller->confirm($request);
 		})->name('admin.import.confirm');
+		
+		// ─── Редактор меню (drag-and-drop) ───
+			$admin->get('/menu', function (Request $request) use ($container): Response {
+					$controller = new MenuController(
+							$container->get(MenuAdminService::class),
+							$container->get(Template::class)
+					);
+					return $controller->index($request);
+			})->name('admin.menu.index');
+
+			$admin->post('/menu/items', function (Request $request) use ($container): Response {
+					$controller = new MenuController(
+							$container->get(MenuAdminService::class),
+							$container->get(Template::class)
+					);
+					return $controller->store($request);
+			})->name('admin.menu.store');
+
+			$admin->post('/menu/structure', function (Request $request) use ($container): Response {
+					$controller = new MenuController(
+							$container->get(MenuAdminService::class),
+							$container->get(Template::class)
+					);
+					return $controller->structure($request);
+			})->name('admin.menu.structure');
+
+			// Важно: статический /menu/items регистрируется раньше, чем шаблонный
+			// /menu/items/{id}, чтобы точное совпадение имело приоритет.
+			$admin->post('/menu/items/{id}', function (Request $request) use ($container): Response {
+					$controller = new MenuController(
+							$container->get(MenuAdminService::class),
+							$container->get(Template::class)
+					);
+					return $controller->update($request);
+			})->name('admin.menu.update');
+
+			$admin->post('/menu/items/{id}/delete', function (Request $request) use ($container): Response {
+					$controller = new MenuController(
+							$container->get(MenuAdminService::class),
+							$container->get(Template::class)
+					);
+					return $controller->destroy($request);
+			})->name('admin.menu.delete');
     }
 }

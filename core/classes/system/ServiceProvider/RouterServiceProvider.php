@@ -2,6 +2,24 @@
 
 declare(strict_types=1);
 
+/**
+ * VampqweEngineMedium — проприетарный PHP-движок
+ *
+ * @copyright  Copyright (c) 2024-2026. Все права защищены.
+ * @author     [Дедюля Александр Иванович / VampqweEngine]
+ * @license    Proprietary
+ * @link       https://github.com/Vampqwe/VampqweEngine.git
+ * @email	   doktor_try@mail.ru
+ *
+ * Данный код является интеллектуальной собственностью автора.
+ * Любое копирование, распространение, модификация или использование
+ * без письменного разрешения правообладателя строго запрещено.
+ *
+ * This software is proprietary and confidential.
+ * Unauthorized copying, distribution, or use is strictly prohibited.
+ */
+
+
 namespace Core\System\ServiceProvider;
 
 use Core\System\Http\Router;
@@ -168,6 +186,12 @@ class RouterServiceProvider extends ServiceProvider
 		);
 		return $controller->index($request);
 	})->name('sitemap');
+
+        // ─── ROBOTS.TXT (динамический, домен из APP_BASE_URL) ───
+        $router->get('/robots.txt', function (Request $request): Response {
+            $controller = new \Core\Module\Page\RobotsController($this->config);
+            return $controller->index();
+        })->name('robots');
 
         $router->get('/__dev/preview', function (Request $request): Response {
             if (!$this->isPreviewRequestAllowed($request)) {

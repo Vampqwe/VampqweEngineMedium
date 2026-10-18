@@ -118,11 +118,9 @@
 </head>
 <body>
     {{-- Навигация --}}
-    <nav class="main-nav">
-        <div class="container">
-            {!! $template->renderPartial('partials/menu', ['menu_items' => $menu_items ?? []]) !!}
-        </div>
-    </nav>
+
+    {!! $template->renderPartial('partials/menu', ['menu_items' => $menu_items ?? []]) !!}
+
     
     {{-- Основной контент --}}
     <main>
