@@ -67,6 +67,12 @@ class Template
             $cachePath,
             $config->getBool('TEMPLATE_CACHE', true)
         );
+
+        // Максимальная глубина вложенности рендера — из конфига (защита от рекурсии @extends/@include)
+        $maxDepth = $config->getInt('TEMPLATE_MAX_RENDER_DEPTH', 10);
+        if ($maxDepth > 0) {
+            $this->maxRenderDepth = $maxDepth;
+        }
     }
 
     // ─── Рендеринг ───
@@ -86,73 +92,76 @@ class Template
     {
         $this->renderDepth++;
 
-        if ($this->renderDepth > $this->maxRenderDepth) {
-            $this->renderDepth = 0;
-            throw TemplateException::nestedTooDeep($this->renderDepth, $this->maxRenderDepth);
-        }
-
-        $templatePath = $this->resolveTemplatePath($template);
-
-        if (!file_exists($templatePath)) {
-            throw TemplateException::notFound($template);
-        }
-
-        // Проверяем кеш
-        $compiled = $this->cache->get($templatePath);
-
-        if ($compiled === null) {
-            $source = file_get_contents($templatePath);
-            if ($source === false) {
-                throw TemplateException::compilationFailed($template, 'Не удалось прочитать файл');
+        try {
+            if ($this->renderDepth > $this->maxRenderDepth) {
+                throw TemplateException::nestedTooDeep($this->renderDepth, $this->maxRenderDepth);
             }
 
-            $this->compiler->validate($source, $template);
-            $compiled = $this->compiler->compile($source);
-            $this->cache->put($templatePath, $compiled);
-        }
+            $templatePath = $this->resolveTemplatePath($template);
 
-        // Сливаем данные: локальные > глобальные
-        $allData = array_merge($this->shared, $data);
+            if (!file_exists($templatePath)) {
+                throw TemplateException::notFound($template);
+            }
 
-        // Сохраняем текущие секции перед рендером дочернего шаблона
-        $savedSections = $this->sections;
-        
-        // Сбрасываем pendingLayout перед рендером
-        $this->pendingLayout = null;
+            // Проверяем кеш
+            $compiled = $this->cache->get($templatePath);
 
-        // Рендерим через eval в изолированной области
-        $result = $this->evaluate($compiled, $allData, $templatePath);
+            if ($compiled === null) {
+                $source = file_get_contents($templatePath);
+                if ($source === false) {
+                    throw TemplateException::compilationFailed($template, 'Не удалось прочитать файл');
+                }
 
-        // Если шаблон использовал @extends — оборачиваем в layout
-        if ($this->pendingLayout !== null) {
-            $layoutName = $this->pendingLayout;
+                $this->compiler->validate($source, $template);
+                $compiled = $this->compiler->compile($source);
+                $this->cache->put($templatePath, $compiled);
+            }
+
+            // Сливаем данные: локальные > глобальные
+            $allData = array_merge($this->shared, $data);
+
+            // Сохраняем текущие секции перед рендером дочернего шаблона
+            $savedSections = $this->sections;
+
+            // Сбрасываем pendingLayout перед рендером
             $this->pendingLayout = null;
-            
-            // Передаём контент дочернего шаблона как переменную $__content
-            $allData['__content'] = $result;
-            
-            // Восстанавливаем секции ДО рендера layout (секции из дочернего шаблона должны быть доступны)
-            // Но сначала сохраняем секции дочернего шаблона
-            $childSections = $this->sections;
-            
-            // Восстанавливаем родительские секции
-            $this->sections = $savedSections;
-            
-            // Теперь объединяем: секции дочернего шаблона имеют приоритет
-            foreach ($childSections as $name => $section) {
-                $this->sections[$name] = $section;
+
+            // Рендерим через eval в изолированной области
+            $result = $this->evaluate($compiled, $allData, $templatePath);
+
+            // Если шаблон использовал @extends — оборачиваем в layout
+            if ($this->pendingLayout !== null) {
+                $layoutName = $this->pendingLayout;
+                $this->pendingLayout = null;
+
+                // Передаём контент дочернего шаблона как переменную $__content
+                $allData['__content'] = $result;
+
+                // Восстанавливаем секции ДО рендера layout (секции из дочернего шаблона должны быть доступны)
+                // Но сначала сохраняем секции дочернего шаблона
+                $childSections = $this->sections;
+
+                // Восстанавливаем родительские секции
+                $this->sections = $savedSections;
+
+                // Теперь объединяем: секции дочернего шаблона имеют приоритет
+                foreach ($childSections as $name => $section) {
+                    $this->sections[$name] = $section;
+                }
+
+                // Рендерим layout (рекурсивно — layout тоже может использовать @extends)
+                $result = $this->render($layoutName, $allData);
+            } else {
+                // Нет layout — восстанавливаем секции
+                $this->sections = $savedSections;
             }
-            
-            // Рендерим layout (рекурсивно — layout тоже может использовать @extends)
-            $result = $this->render($layoutName, $allData);
-        } else {
-            // Нет layout — восстанавливаем секции
-            $this->sections = $savedSections;
+
+            return $result;
+        } finally {
+            // Всегда уменьшаем глубину при выходе (включая исключения),
+            // иначе счётчик «залипает» и защита от рекурсии ломается/ложно срабатывает.
+            $this->renderDepth--;
         }
-
-        $this->renderDepth--;
-
-        return $result;
     }
 
     /**
