@@ -29,38 +29,44 @@ use Core\System\DataBase\DataBase;
  */
 class PageService
 {
-    private DataBase $db;
+    protected DataBase $db;
 
     public function __construct(DataBase $db)
     {
         $this->db = $db;
     }
-	
-		/**
-	 * Проверить существование страницы по slug (независимо от статуса)
-	 * Используется при импорте для предотвращения дубликатов
-	 */
-	public function pageExistsBySlug(string $slug): bool
-	{
-		$slug = $slug === '' ? '' : ltrim($slug, '/');
-		$slug = rtrim($slug, '/');
-		
-		$count = $this->db->fetchColumn(
-			"SELECT COUNT(*) FROM pages WHERE slug = :slug",
-			['slug' => $slug]
-		);
-		
-		return (int) $count > 0;
-	}
-	
+
+    /**
+     * Нормализация слага: без ведущих/замыкающих слэшей.
+     */
+    protected function normalizeSlug(string $slug): string
+    {
+        $slug = $slug === '' ? '' : ltrim($slug, '/');
+        return rtrim($slug, '/');
+    }
+
+    /**
+     * Проверить существование страницы по slug (независимо от статуса).
+     * Используется при импорте для предотвращения дубликатов.
+     */
+    public function pageExistsBySlug(string $slug): bool
+    {
+        $slug = $this->normalizeSlug($slug);
+
+        $count = $this->db->fetchColumn(
+            "SELECT COUNT(*) FROM pages WHERE slug = :slug",
+            ['slug' => $slug]
+        );
+
+        return (int) $count > 0;
+    }
+
     /**
      * Получить страницу по слагу
      */
     public function getPageBySlug(string $slug): ?array
     {
-        // Нормализуем слаг
-        $slug = $slug === '' ? '' : ltrim($slug, '/');
-        $slug = rtrim($slug, '/');
+        $slug = $this->normalizeSlug($slug);
 
         $sql = "
             SELECT 

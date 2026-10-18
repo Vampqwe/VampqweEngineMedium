@@ -19,7 +19,7 @@ declare(strict_types=1);
  */
 
 
-namespace Core\Module\Admin\Services;
+namespace Core\Module\Auth\Services;
 
 use Core\System\Config\Config;
 

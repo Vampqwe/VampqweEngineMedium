@@ -24,15 +24,13 @@ namespace Core\Module\Admin\Services;
 use Core\System\DataBase\DataBase;
 use PDO;
 
-class PageService
+/**
+ * Админский сервис страниц. Наследует базовые операции чтения по slug
+ * (getPageBySlug / pageExistsBySlug) из модуля Page — единый источник
+ * логики для фронтенда и админки.
+ */
+class PageService extends \Core\Module\Page\PageService
 {
-    private DataBase $db;
-
-    public function __construct(DataBase $db)
-    {
-        $this->db = $db;
-    }
-
     /**
      * Получить все страницы с пагинацией
      */
@@ -71,40 +69,6 @@ class PageService
              WHERE p.id = :id",
             ['id' => $id]
         );
-    }
-
-    /**
-     * Получить опубликованную страницу по slug (для фронтенда)
-     */
-    public function getPageBySlug(string $slug): ?array
-    {
-        $slug = $slug === '' ? '' : ltrim($slug, '/');
-        $slug = rtrim($slug, '/');
-
-        return $this->db->fetchOne(
-            "SELECT p.*, a.name AS author_name 
-             FROM pages p 
-             LEFT JOIN authors a ON p.author_id = a.id 
-             WHERE p.slug = :slug AND p.status = 'published' 
-             LIMIT 1",
-            ['slug' => $slug]
-        );
-    }
-
-    /**
-     * Проверить существование страницы по slug (для импорта, любой статус)
-     */
-    public function pageExistsBySlug(string $slug): bool
-    {
-        $slug = $slug === '' ? '' : ltrim($slug, '/');
-        $slug = rtrim($slug, '/');
-        
-        $count = $this->db->fetchColumn(
-            "SELECT COUNT(*) FROM pages WHERE slug = :slug",
-            ['slug' => $slug]
-        );
-        
-        return (int) $count > 0;
     }
 
     /**

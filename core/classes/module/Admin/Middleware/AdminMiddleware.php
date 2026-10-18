@@ -21,7 +21,7 @@ declare(strict_types=1);
 
 namespace Core\Module\Admin\Middleware;
 
-use Core\Module\Admin\Services\InstallService;
+use Core\Module\Install\Services\InstallService;
 use Core\System\Http\Middleware;
 use Core\System\Http\MiddlewareStack;
 use Core\System\Http\Request;

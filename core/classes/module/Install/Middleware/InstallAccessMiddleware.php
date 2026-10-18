@@ -19,9 +19,9 @@ declare(strict_types=1);
  */
 
 
-namespace Core\Module\Admin\Middleware;
+namespace Core\Module\Install\Middleware;
 
-use Core\Module\Admin\Services\InstallService;
+use Core\Module\Install\Services\InstallService;
 use Core\System\Http\Middleware;
 use Core\System\Http\Request;
 use Core\System\Http\Response;

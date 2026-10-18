@@ -22,7 +22,7 @@ declare(strict_types=1);
 namespace Core\Module\Admin\Controllers;
 
 use Core\Module\Admin\Services\HtmlImportParser;
-use Core\Module\Admin\Services\PageService;
+use Core\Module\Page\PageService;
 use Core\Module\Admin\Services\AdminService;
 use Core\System\Config\Config;
 use Core\System\Http\Request;
