@@ -82,8 +82,10 @@ class PagesController
 
     public function index(Request $request): Response
     {
-        $page = (int) $request->input('page', 1);
-        $data = $this->pageService->getPages($page);
+        $page = max(1, (int) $request->input('page', 1));
+        // Размер страницы: запрос (?per_page=) опционален, иначе — из конфига.
+        $perPage = $request->input('per_page');
+        $data = $this->pageService->getPages($page, $perPage !== null ? (int) $perPage : null);
         $flash = $this->adminService->getFlash();
 
         $html = $this->template->render('admin/pages/list', [

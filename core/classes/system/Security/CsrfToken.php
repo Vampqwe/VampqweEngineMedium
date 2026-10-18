@@ -22,6 +22,8 @@ declare(strict_types=1);
 
 namespace Core\System\Security;
 
+use Core\System\Session\SessionManager;
+
 /**
  * Генерация и валидация CSRF токенов
  */
@@ -31,6 +33,7 @@ class CsrfToken
     private int $expireSeconds;
     private bool $enabled;
     private bool $sessionStarted = false;
+    private SessionManager $sessions;
 
     public function __construct(
         string $tokenName = '_csrf_token',
@@ -40,6 +43,7 @@ class CsrfToken
         $this->tokenName = $tokenName;
         $this->expireSeconds = $expireSeconds;
         $this->enabled = $enabled;
+        $this->sessions = new SessionManager();
     }
 
     /**
@@ -103,8 +107,9 @@ class CsrfToken
             return $this->getOrCreateCliToken();
         }
 
-        if (isset($_SESSION[$this->tokenName]) && !$this->isExpired()) {
-            return $_SESSION[$this->tokenName]['token'];
+        $stored = $this->sessions->get($this->tokenName);
+        if ($stored !== null && !$this->isExpired()) {
+            return $stored['token'];
         }
 
         return $this->generate();
@@ -141,15 +146,14 @@ class CsrfToken
             return true;
         }
 
-        if (!isset($_SESSION[$this->tokenName])) {
+        $stored = $this->sessions->get($this->tokenName);
+        if ($stored === null) {
             throw SecurityException::invalidCsrfToken();
         }
 
-        $stored = $_SESSION[$this->tokenName];
-
         // Проверяем срок действия
         if (time() - $stored['time'] > $this->expireSeconds) {
-            unset($_SESSION[$this->tokenName]);
+            $this->sessions->remove($this->tokenName);
             throw SecurityException::invalidCsrfToken();
         }
 
@@ -221,11 +225,12 @@ class CsrfToken
             return $stored === null || (time() - $stored['time'] > $this->expireSeconds);
         }
 
-        if (!isset($_SESSION[$this->tokenName])) {
+        $stored = $this->sessions->get($this->tokenName);
+        if ($stored === null) {
             return true;
         }
 
-        return time() - $_SESSION[$this->tokenName]['time'] > $this->expireSeconds;
+        return time() - $stored['time'] > $this->expireSeconds;
     }
 
     public function clear(): void
@@ -237,7 +242,7 @@ class CsrfToken
             return;
         }
 
-        unset($_SESSION[$this->tokenName]);
+        $this->sessions->remove($this->tokenName);
     }
 
     public function setEnabled(bool $enabled): self
@@ -303,9 +308,9 @@ class CsrfToken
             return;
         }
 
-        $_SESSION[$this->tokenName] = [
+        $this->sessions->set($this->tokenName, [
             'token' => $token,
             'time'  => time(),
-        ];
+        ]);
     }
 }
