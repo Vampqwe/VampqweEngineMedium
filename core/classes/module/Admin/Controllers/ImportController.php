@@ -27,6 +27,7 @@ use Core\Module\Admin\Services\AdminService;
 use Core\System\Config\Config;
 use Core\System\Http\Request;
 use Core\System\Http\Response;
+use Core\System\Security\SecurityManager;
 use Core\System\Template\Template;
 
 class ImportController
@@ -42,7 +43,8 @@ class ImportController
         PageService $pageService,
         AdminService $adminService,
         Template $template,
-        Config $config
+        Config $config,
+        private SecurityManager $security
     ) {
         $this->parser = $parser;
         $this->pageService = $pageService;
@@ -58,7 +60,7 @@ class ImportController
         $html = $this->template->render('admin/import/index', [
             'title' => 'Импорт страниц',
             'flash' => $flash,
-            'csrf_token' => '',
+            'csrf_token' => $this->security->getCsrfToken()->getToken(),
         ]);
 
         return Response::html($html);
@@ -107,7 +109,7 @@ class ImportController
             'parsed' => $parsed,
             'existing' => $exists,
             'flash' => $this->adminService->getFlash(),
-            'csrf_token' => '',
+            'csrf_token' => $this->security->getCsrfToken()->getToken(),
         ]);
 
         return Response::html($html);

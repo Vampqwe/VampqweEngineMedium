@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }} — Админ-панель</title>
    <link rel="stylesheet" href="/assets/css/admin.css">
+    {{-- CSRF: единый meta-тег для всех fetch/AJAX-запросов админки (menu-editor.js и др.) --}}
+    {!! $csrf_meta ?? '' !!}
 </head>
 <body>
     <div class="admin-container">

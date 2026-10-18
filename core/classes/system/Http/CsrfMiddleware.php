@@ -21,6 +21,7 @@ declare(strict_types=1);
 
 namespace Core\System\Http;
 
+use Core\Module\Admin\Services\AdminService;
 use Core\System\Security\SecurityManager;
 
 /**
@@ -32,16 +33,28 @@ use Core\System\Security\SecurityManager;
  */
 class CsrfMiddleware implements Middleware
 {
-    public function __construct(private SecurityManager $security)
-    {
+    public function __construct(
+        private SecurityManager $security,
+        private ?AdminService $flash = null
+    ) {
     }
 
     public function handle(Request $request, callable $next): Response
     {
-        if (!$request->isSafe() && !$this->security->validateCsrf(
-            (string) $request->input('_csrf_token', '')
-        )) {
-            return Response::text('Недействительный CSRF-токен', StatusCode::FORBIDDEN);
+        if (!$request->isSafe()) {
+            // Токен принимается из поля формы (_csrf_token) либо AJAX-заголовка
+            // X-CSRF-Token. Пустое значение невалидно — validateCsrf('') вернёт false.
+            $headerToken = $request->getHeader(Header::X_CSRF_TOKEN);
+            $token = trim((string) ($request->input('_csrf_token', '') ?: ($headerToken ?? '')));
+
+            if (!$this->security->validateCsrf($token)) {
+                // Единый UX с контроллерами админки: flash + редирект назад.
+                $this->flash?->setFlash(
+                    'error',
+                    'Защита от подделки запроса: токен отсутствует или устарел. Повторите действие.'
+                );
+                return Response::redirect('/admin');
+            }
         }
 
         return $next($request);
