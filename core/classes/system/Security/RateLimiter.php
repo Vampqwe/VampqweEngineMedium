@@ -28,13 +28,13 @@ namespace Core\System\Security;
  */
 class RateLimiter
 {
-    private const CLEANUP_FREQUENCY = 100;
+    // Минимальный интервал между прогонами уборки, секунд.
+    private const CLEANUP_INTERVAL_SECONDS = 300;
 
     private string $storagePath;
     private int $maxAttempts;
     private int $windowSeconds;
     private bool $enabled;
-    private int $attemptsSinceCleanup = 0;
 
     public function __construct(
         string $storagePath,
@@ -53,23 +53,17 @@ class RateLimiter
      *
      * @return array{allowed: bool, remaining: int, retry_after: int}
      */
-/**
- * Попытаться выполнить действие
- *
- * @return array{allowed: bool, remaining: int, retry_after: int}
- */
-public function attempt(string $key): array
-{
-    if (!$this->enabled) {
-        return ['allowed' => true, 'remaining' => PHP_INT_MAX, 'retry_after' => 0];
-    }
+    public function attempt(string $key): array
+    {
+        if (!$this->enabled) {
+            return ['allowed' => true, 'remaining' => PHP_INT_MAX, 'retry_after' => 0];
+        }
 
-    $this->ensureStorageDirectory();
-    $this->attemptsSinceCleanup++;
-    if ($this->attemptsSinceCleanup >= self::CLEANUP_FREQUENCY) {
-        $this->attemptsSinceCleanup = 0;
-        $this->cleanupExpired();
-    }
+        $this->ensureStorageDirectory();
+        // Уборка протухших файлов — по времени последнего обращения, а не
+        // per-process счётчиком (который при php-fpm почти никогда не
+        // доходит до CLEANUP_FREQUENCY и расточительно вызывается в воркере).
+        $this->maybeCleanup();
 
     $storageLock = $this->acquireStorageLock(LOCK_SH);
     try {
@@ -345,6 +339,28 @@ public function attempt(string $key): array
     /**
      * Очистить устаревшие файлы
      */
+    /**
+     * Запускает cleanupExpired не чаще одного раза в CLEANUP_INTERVAL_SECONDS.
+     * Отметка хранится во временном файле-маркере — решение переживает
+     * завершение запроса и корректно работает при php-fpm (несколько
+     * процессов видят одну и ту же отметку).
+     */
+    private function maybeCleanup(): void
+    {
+        $marker = $this->storagePath . DIRECTORY_SEPARATOR . '.last_cleanup';
+        $now = time();
+        $last = @filemtime($marker);
+        if ($last !== false && $now - $last < self::CLEANUP_INTERVAL_SECONDS) {
+            return;
+        }
+        // Атомарное создание/обновление маркера: только один процесс побеждает.
+        if (@touch($marker) === false) {
+            return;
+        }
+        clearstatcache(true, $marker);
+        $this->cleanupExpired();
+    }
+
     private function cleanupExpired(): void
     {
         $storageLock = $this->acquireStorageLock(LOCK_EX);

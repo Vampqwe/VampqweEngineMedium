@@ -101,13 +101,42 @@ class AdminServiceProvider extends ServiceProvider
         $router = $this->container->get(Router::class);
         $container = $this->container;
 
-        // Единая фабрика контроллера мастера установки (устраняет бойлерплейт).
+        // ─── Фабрики контроллеров (единая точка сборки зависимостей,
+        //     устраняет дублирование бойлерплейта на каждый маршрут) ───
         $installController = static fn(): InstallController => new InstallController(
             $container->get(InstallService::class),
             $container->get(AdminService::class),
             $container->get(Config::class),
             $container->get(Template::class),
             $container->get(SecurityManager::class)
+        );
+
+        $authController = static fn(): AuthController => new AuthController(
+            $container->get(SuperAdminAuth::class),
+            $container->get(AdminService::class),
+            $container->get(Config::class),
+            $container->get(DataBase::class),
+            $container->get(SecurityManager::class),
+            $container->get(Template::class)
+        );
+
+        $pagesController = static fn(): PagesController => new PagesController(
+            $container->get(PageService::class),
+            $container->get(AdminService::class),
+            $container->get(Template::class)
+        );
+
+        $importController = static fn(): ImportController => new ImportController(
+            $container->get(HtmlImportParser::class),
+            $container->get(PageService::class),
+            $container->get(AdminService::class),
+            $container->get(Template::class),
+            $container->get(Config::class)
+        );
+
+        $menuController = static fn(): MenuController => new MenuController(
+            $container->get(MenuAdminService::class),
+            $container->get(Template::class)
         );
 
         // Критическая защита мастера установки: доступ только по ключу
@@ -171,28 +200,12 @@ class AdminServiceProvider extends ServiceProvider
             });
 
         // ─── Публичные маршруты авторизации ───
-        $router->get('/admin/login', function (Request $request) use ($container): Response {
-            $controller = new AuthController(
-                $container->get(SuperAdminAuth::class),
-                $container->get(AdminService::class),
-                $container->get(Config::class),
-                $container->get(DataBase::class),
-                $container->get(SecurityManager::class),
-                $container->get(Template::class)
-            );
-            return $controller->showLogin($request);
+        $router->get('/admin/login', function (Request $request) use ($authController): Response {
+            return $authController()->showLogin($request);
         })->name('admin.login');
 
-        $router->post('/admin/login', function (Request $request) use ($container): Response {
-            $controller = new AuthController(
-                $container->get(SuperAdminAuth::class),
-                $container->get(AdminService::class),
-                $container->get(Config::class),
-                $container->get(DataBase::class),
-                $container->get(SecurityManager::class),
-                $container->get(Template::class)
-            );
-            return $controller->login($request);
+        $router->post('/admin/login', function (Request $request) use ($authController): Response {
+            return $authController()->login($request);
         });
 
         // ─── Защищённые маршруты ───
@@ -209,150 +222,70 @@ class AdminServiceProvider extends ServiceProvider
             );
             return $controller->index($request);
         })->name('admin.dashboard');
-		
-			// ── CRUD страниц ───
-	        // ─── CRUD страниц ───
-        $admin->get('/pages', function (Request $request) use ($container): Response {
-            $controller = new PagesController(
-                $container->get(PageService::class),
-                $container->get(AdminService::class),
-                $container->get(Template::class)
-            );
-            return $controller->index($request);
+
+        // ─── CRUD страниц ───
+        $admin->get('/pages', function (Request $request) use ($pagesController): Response {
+            return $pagesController()->index($request);
         })->name('admin.pages.index');
 
-        $admin->get('/pages/new', function (Request $request) use ($container): Response {
-            $controller = new PagesController(
-                $container->get(PageService::class),
-                $container->get(AdminService::class),
-                $container->get(Template::class)
-            );
-            return $controller->create($request);
+        $admin->get('/pages/new', function (Request $request) use ($pagesController): Response {
+            return $pagesController()->create($request);
         })->name('admin.pages.create');
 
-        $admin->post('/pages/store', function (Request $request) use ($container): Response {
-            $controller = new PagesController(
-                $container->get(PageService::class),
-                $container->get(AdminService::class),
-                $container->get(Template::class)
-            );
-            return $controller->store($request);
+        $admin->post('/pages/store', function (Request $request) use ($pagesController): Response {
+            return $pagesController()->store($request);
         })->name('admin.pages.store');
 
-        $admin->get('/pages/{id}/edit', function (Request $request) use ($container): Response {
-            $controller = new PagesController(
-                $container->get(PageService::class),
-                $container->get(AdminService::class),
-                $container->get(Template::class)
-            );
-            return $controller->edit($request);
+        $admin->get('/pages/{id}/edit', function (Request $request) use ($pagesController): Response {
+            return $pagesController()->edit($request);
         })->name('admin.pages.edit');
 
-        $admin->post('/pages/{id}/update', function (Request $request) use ($container): Response {
-            $controller = new PagesController(
-                $container->get(PageService::class),
-                $container->get(AdminService::class),
-                $container->get(Template::class)
-            );
-            return $controller->update($request);
+        $admin->post('/pages/{id}/update', function (Request $request) use ($pagesController): Response {
+            return $pagesController()->update($request);
         })->name('admin.pages.update');
 
-        $admin->post('/pages/{id}/delete', function (Request $request) use ($container): Response {
-            $controller = new PagesController(
-                $container->get(PageService::class),
-                $container->get(AdminService::class),
-                $container->get(Template::class)
-            );
-            return $controller->destroy($request);
+        $admin->post('/pages/{id}/delete', function (Request $request) use ($pagesController): Response {
+            return $pagesController()->destroy($request);
         })->name('admin.pages.delete');
 
-        $admin->post('/logout', function (Request $request) use ($container): Response {
-            $controller = new AuthController(
-                $container->get(SuperAdminAuth::class),
-                $container->get(AdminService::class),
-                $container->get(Config::class),
-                $container->get(DataBase::class),
-                $container->get(SecurityManager::class),
-                $container->get(Template::class)
-            );
-            return $controller->logout($request);
+        $admin->post('/logout', function (Request $request) use ($authController): Response {
+            return $authController()->logout($request);
         })->name('admin.logout');
-		
-		// ─── Импорт страниц ───
-		$admin->get('/import', function (Request $request) use ($container): Response {
-			$controller = new ImportController(
-				$container->get(HtmlImportParser::class),
-				$container->get(PageService::class),
-				$container->get(AdminService::class),
-				$container->get(Template::class),
-				$container->get(Config::class)
-			);
-			return $controller->index($request);
-		})->name('admin.import.index');
 
-		$admin->post('/import/upload', function (Request $request) use ($container): Response {
-			$controller = new ImportController(
-				$container->get(HtmlImportParser::class),
-				$container->get(PageService::class),
-				$container->get(AdminService::class),
-				$container->get(Template::class),
-				$container->get(Config::class)
-			);
-			return $controller->upload($request);
-		})->name('admin.import.upload');
+        // ─── Импорт страниц ───
+        $admin->get('/import', function (Request $request) use ($importController): Response {
+            return $importController()->index($request);
+        })->name('admin.import.index');
 
-		$admin->post('/import/confirm', function (Request $request) use ($container): Response {
-			$controller = new ImportController(
-				$container->get(HtmlImportParser::class),
-				$container->get(PageService::class),
-				$container->get(AdminService::class),
-				$container->get(Template::class),
-				$container->get(Config::class)
-			);
-			return $controller->confirm($request);
-		})->name('admin.import.confirm');
-		
-		// ─── Редактор меню (drag-and-drop) ───
-			$admin->get('/menu', function (Request $request) use ($container): Response {
-					$controller = new MenuController(
-							$container->get(MenuAdminService::class),
-							$container->get(Template::class)
-					);
-					return $controller->index($request);
-			})->name('admin.menu.index');
+        $admin->post('/import/upload', function (Request $request) use ($importController): Response {
+            return $importController()->upload($request);
+        })->name('admin.import.upload');
 
-			$admin->post('/menu/items', function (Request $request) use ($container): Response {
-					$controller = new MenuController(
-							$container->get(MenuAdminService::class),
-							$container->get(Template::class)
-					);
-					return $controller->store($request);
-			})->name('admin.menu.store');
+        $admin->post('/import/confirm', function (Request $request) use ($importController): Response {
+            return $importController()->confirm($request);
+        })->name('admin.import.confirm');
 
-			$admin->post('/menu/structure', function (Request $request) use ($container): Response {
-					$controller = new MenuController(
-							$container->get(MenuAdminService::class),
-							$container->get(Template::class)
-					);
-					return $controller->structure($request);
-			})->name('admin.menu.structure');
+        // ─── Редактор меню (drag-and-drop) ───
+        // Важно: статический /menu/items регистрируется раньше, чем шаблонный
+        // /menu/items/{id}, чтобы точное совпадение имело приоритет.
+        $admin->get('/menu', function (Request $request) use ($menuController): Response {
+            return $menuController()->index($request);
+        })->name('admin.menu.index');
 
-			// Важно: статический /menu/items регистрируется раньше, чем шаблонный
-			// /menu/items/{id}, чтобы точное совпадение имело приоритет.
-			$admin->post('/menu/items/{id}', function (Request $request) use ($container): Response {
-					$controller = new MenuController(
-							$container->get(MenuAdminService::class),
-							$container->get(Template::class)
-					);
-					return $controller->update($request);
-			})->name('admin.menu.update');
+        $admin->post('/menu/items', function (Request $request) use ($menuController): Response {
+            return $menuController()->store($request);
+        })->name('admin.menu.store');
 
-			$admin->post('/menu/items/{id}/delete', function (Request $request) use ($container): Response {
-					$controller = new MenuController(
-							$container->get(MenuAdminService::class),
-							$container->get(Template::class)
-					);
-					return $controller->destroy($request);
-			})->name('admin.menu.delete');
+        $admin->post('/menu/structure', function (Request $request) use ($menuController): Response {
+            return $menuController()->structure($request);
+        })->name('admin.menu.structure');
+
+        $admin->post('/menu/items/{id}', function (Request $request) use ($menuController): Response {
+            return $menuController()->update($request);
+        })->name('admin.menu.update');
+
+        $admin->post('/menu/items/{id}/delete', function (Request $request) use ($menuController): Response {
+            return $menuController()->destroy($request);
+        })->name('admin.menu.delete');
     }
 }

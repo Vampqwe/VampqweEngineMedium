@@ -42,19 +42,14 @@ class RouterServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        // ВРЕМЕННОЕ РЕШЕНИЕ: сохраняем Router в статической переменной,
-        // пока не починим Container::singleton()
-        static $routerInstance = null;
-        
-        if ($routerInstance === null) {
-            $routerInstance = new Router(
-                $this->container->get(\Core\System\Http\Request::class),
-                $this->config
-            );
-        }
-        
-        // Регистрируем через замыкание, которое ВСЕГДА возвращает тот же объект
-        $this->container->singleton(Router::class, fn() => $routerInstance);
+        // ИСПРАВЛЕНО: static-костыль удалён. Container::singleton() корректно
+        // кеширует результат фабрики в $instances (см. Container::get, шаг 3),
+        // поэтому ленивая фабрика гарантирует единственный экземпляр Router
+        // без утечки состояния между приложениями в одном процессе.
+        $this->container->singleton(Router::class, fn() => new Router(
+            $this->container->get(\Core\System\Http\Request::class),
+            $this->config
+        ));
     }
 
     public function boot(): void
