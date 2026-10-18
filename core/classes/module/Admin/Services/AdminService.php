@@ -25,6 +25,11 @@ use Core\System\DataBase\DataBase;
 
 class AdminService
 {
+    // Лимиты дашборда (управляются из config/admin-dashboard.php)
+    private const DEFAULT_RECENT_LIMIT = 5;
+    private const DEFAULT_ACTIVITY_LIMIT = 4;
+    private const MAX_LIMIT = 50;
+
     private DataBase $db;
 
     public function __construct(DataBase $db)
@@ -63,23 +68,28 @@ class AdminService
         ];
     }
 	
-		/**
-	 * Получить последние страницы
-	 */
-	public function getRecentPages(int $limit = 5): array
-	{
-		return $this->db->fetchAll(
-			"SELECT id, title, status, updated_at FROM pages ORDER BY updated_at DESC LIMIT {$limit}"
-		);
-	}
+    /**
+     * Получить последние страницы.
+     *
+     * Лимит жёстко ограничивается диапазоном [1, MAX_LIMIT] — конкатенация
+     * в SQL безопасна только при гарантированно целочисленном значении.
+     */
+    public function getRecentPages(int $limit = self::DEFAULT_RECENT_LIMIT): array
+    {
+        $limit = max(1, min($limit, self::MAX_LIMIT));
+        return $this->db->fetchAll(
+            "SELECT id, title, status, updated_at FROM pages ORDER BY updated_at DESC LIMIT {$limit}"
+        );
+    }
 
-	/**
-	 * Получить последнюю активность (имитация — последние изменения страниц)
-	 */
-	public function getRecentActivity(int $limit = 4): array
-	{
-		return $this->db->fetchAll(
-			"SELECT id, title, status, updated_at FROM pages ORDER BY updated_at DESC LIMIT {$limit}"
-		);
-	}
+    /**
+     * Получить последнюю активность (имитация — последние изменения страниц)
+     */
+    public function getRecentActivity(int $limit = self::DEFAULT_ACTIVITY_LIMIT): array
+    {
+        $limit = max(1, min($limit, self::MAX_LIMIT));
+        return $this->db->fetchAll(
+            "SELECT id, title, status, updated_at FROM pages ORDER BY updated_at DESC LIMIT {$limit}"
+        );
+    }
 }
