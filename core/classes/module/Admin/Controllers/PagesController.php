@@ -25,6 +25,7 @@ use Core\Module\Admin\Services\PageService;
 use Core\Module\Admin\Services\AdminService;
 use Core\System\Http\Request;
 use Core\System\Http\Response;
+use Core\System\Security\SecurityManager;
 use Core\System\Template\Template;
 
 class PagesController
@@ -36,11 +37,23 @@ class PagesController
     public function __construct(
         PageService $pageService,
         AdminService $adminService,
-        Template $template
+        Template $template,
+        private SecurityManager $security
     ) {
         $this->pageService = $pageService;
         $this->adminService = $adminService;
         $this->template = $template;
+    }
+
+    /**
+     * Реальный CSRF-токен для форм (create/edit/list).
+     *
+     * Ранее в render передавался пустой csrf_token — поля формы были пусты,
+     * и CsrfMiddleware отклонял бы любой корректно отправленный POST.
+     */
+    private function csrfToken(): string
+    {
+        return $this->security->getCsrfToken()->getToken();
     }
 
     public function index(Request $request): Response
@@ -58,7 +71,7 @@ class PagesController
                 'total' => $data['total'],
             ],
             'flash' => $flash,
-            'csrf_token' => '',
+            'csrf_token' => $this->csrfToken(),
         ]);
 
         return Response::html($html);
@@ -74,7 +87,7 @@ class PagesController
             'page' => null,
             'authors' => $authors,
             'flash' => $flash,
-            'csrf_token' => '',
+            'csrf_token' => $this->csrfToken(),
         ]);
 
         return Response::html($html);
@@ -140,7 +153,7 @@ class PagesController
             'page' => $page,
             'authors' => $authors,
             'flash' => $flash,
-            'csrf_token' => '',
+            'csrf_token' => $this->csrfToken(),
         ]);
 
         return Response::html($html);

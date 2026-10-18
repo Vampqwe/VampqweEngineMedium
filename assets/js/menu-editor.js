@@ -82,9 +82,17 @@
         async function postForm(url, fields) {
             const body = new URLSearchParams();
             Object.keys(fields).forEach(function (k) { body.append(k, fields[k]); });
+            // CSRF: токен берётся из meta-тега, который рендерит layout админки.
+            var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            var headers = { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' };
+            if (csrfMeta) {
+                var name = csrfMeta.getAttribute('data-name') || '_csrf_token';
+                body.append(name, csrfMeta.getAttribute('content') || '');
+                headers['X-CSRF-Token'] = csrfMeta.getAttribute('content') || '';
+            }
             const resp = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                headers: headers,
                 body: body.toString()
             });
             let json;
