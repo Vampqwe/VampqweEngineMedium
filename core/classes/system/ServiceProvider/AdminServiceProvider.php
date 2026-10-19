@@ -51,11 +51,11 @@ class AdminServiceProvider extends ServiceProvider
         $db = $this->container->get(DataBase::class);
         $config = $this->config;
 
-        // Корень приложения берётся из конфига (FS_BASE_PATH) и нормализуется
-        // единым резолвером (см. PathResolver): storage-путь → родитель,
-        // недостоверный путь → fallback на реальный корень проекта.
+        // Корень проекта — из единого резолвера (APP_ROOT_PATH / ProjectRoot,
+        // см. PathResolver). FS_BASE_PATH — только устаревший fallback.
         $basePath = \Core\System\Security\PathResolver::normalizeRootPath(
-            (string) ($config->get('FS_BASE_PATH', '') ?: getcwd())
+            (string) ($config->get('FS_BASE_PATH') ?? ''),
+            (string) ($config->get('APP_ROOT_PATH') ?? '')
         );
         $this->container->singleton(InstallService::class, fn() => 
             new InstallService($config, $basePath)

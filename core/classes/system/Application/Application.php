@@ -72,13 +72,28 @@ class Application
         $this->container = new Container();
     }
 
-    public static function init(string $basePath): self
+    /**
+     * Инициализация приложения.
+     *
+     * Корень проекта определяется единым резолвером ProjectRoot
+     * (иерархия: явный параметр → VCORE_ROOT → APP_ROOT_PATH из
+     * config.env → fallback от расположения файлов движка).
+     *
+     * @param string|null $basePath Явный корень (например, __DIR__ из
+     *        index.php). Null/пусто — разрешить через ProjectRoot.
+     */
+    public static function init(?string $basePath = null): self
     {
         if (self::$instance !== null) {
             throw ApplicationException::alreadyInitialized();
         }
 
-        $app = new self($basePath);
+        // Фиксируем корень ДО создания Config: все потребители базового
+        // пути (провайдеры, Template, InstallService, CLI) читают его
+        // только из ProjectRoot / getBasePath().
+        ProjectRoot::set($basePath);
+
+        $app = new self(ProjectRoot::get());
         self::$instance = $app;
 
         try {
@@ -104,6 +119,7 @@ class Application
     {
         self::$instance = null;
         Config::reset();
+        ProjectRoot::reset();
     }
 
     private function bootstrap(): void

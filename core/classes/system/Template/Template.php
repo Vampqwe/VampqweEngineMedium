@@ -59,9 +59,16 @@ class Template
         $this->compiler = new TemplateCompiler();
         $this->cspNonce = $cspNonce ?? bin2hex(random_bytes(16));
 
-        $basePath = $config->get('APP_BASE_PATH', getcwd());
-        $this->templatePath = rtrim($basePath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'views';
-        $cachePath = rtrim($basePath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'cache' . DIRECTORY_SEPARATOR . 'templates';
+        // Корень проекта — единый резолвер (APP_ROOT_PATH / ProjectRoot).
+        // APP_BASE_PATH больше не читается: устаревший ключ-призрак,
+        // которого никогда не было в config.env (раньше давал getcwd()).
+        $basePath = \Core\System\Security\PathResolver::normalizeRootPath(
+            (string) ($config->get('FS_BASE_PATH') ?? ''),
+            (string) ($config->get('APP_ROOT_PATH') ?? '')
+        );
+        $this->templatePath = $basePath . DIRECTORY_SEPARATOR . 'views';
+        $cachePath = \Core\System\Security\PathResolver::resolveStorageDir($basePath)
+            . DIRECTORY_SEPARATOR . 'cache' . DIRECTORY_SEPARATOR . 'templates';
 
         $this->cache = new TemplateCache(
             $cachePath,

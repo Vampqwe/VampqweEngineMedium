@@ -139,7 +139,14 @@ class RouterServiceProvider extends ServiceProvider
 		$router->get('/storage/{file}', function (Request $request) use ($container): Response {
 			/** @var \Core\System\Config\Config $config */
 			$config = $container->get(\Core\System\Config\Config::class);
-			$baseDir = realpath((string) $config->get('FS_BASE_PATH', ''));
+			// Корень проекта — единый резолвер (APP_ROOT_PATH / ProjectRoot,
+			// см. PathResolver). storage/ вычисляется от него, а не из
+			// сырого FS_BASE_PATH (исторически мог указывать на …/storage).
+			$rootDir = \Core\System\Security\PathResolver::normalizeRootPath(
+				(string) ($config->get('FS_BASE_PATH') ?? ''),
+				(string) ($config->get('APP_ROOT_PATH') ?? '')
+			);
+			$baseDir = realpath(\Core\System\Security\PathResolver::resolveStorageDir($rootDir));
 			if ($baseDir === false) {
 				return Response::text('Not Found', StatusCode::NOT_FOUND);
 			}
