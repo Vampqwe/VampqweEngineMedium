@@ -213,11 +213,29 @@ final class Config
             // Ленивая самоинициализация: позволяет системным классам
             // (SessionManager, CsrfToken и др.) обращаться к конфигу без
             // жёсткой зависимости от порядка вызовов в Application.
-            // Путь по умолчанию — config.env рядом с точкой входа.
-            $fallback = getcwd() . DIRECTORY_SEPARATOR . 'config.env';
+            // Ищем config.env детерминированно, НЕ по getcwd(): при запуске
+            // CLI-скриптов или systemd-юнитов из другого cwd «конфиг рядом»
+            // — это лотерея (чужой конфиг или запоздалый exception).
+            // Порядок поиска: VCORE_ROOT → корень движка от __FILE__ → getcwd().
+            $candidates = [];
 
-            if (PathProbe::exists($fallback)) {
-                return self::init($fallback);
+            $root = defined('VCORE_ROOT') ? rtrim((string) VCORE_ROOT, '/\\') : null;
+            if ($root !== null && $root !== '') {
+                $candidates[] = $root . DIRECTORY_SEPARATOR . 'config.env';
+            }
+
+            // core/classes/system/Config/Config.php → корень проекта на 4 уровня выше
+            $candidates[] = dirname(__DIR__, 4) . DIRECTORY_SEPARATOR . 'config.env';
+
+            $cwd = getcwd();
+            if ($cwd !== false && $cwd !== '') {
+                $candidates[] = $cwd . DIRECTORY_SEPARATOR . 'config.env';
+            }
+
+            foreach ($candidates as $candidate) {
+                if (PathProbe::exists($candidate)) {
+                    return self::init($candidate);
+                }
             }
 
             throw new FileSystemException('Config не инициализирован. Вызовите Config::init()');
