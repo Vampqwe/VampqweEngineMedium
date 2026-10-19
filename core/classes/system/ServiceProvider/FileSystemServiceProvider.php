@@ -31,11 +31,13 @@ class FileSystemServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Нормализуем корень (…/storage → корень проекта), иначе при
-        // историческом значении FS_BASE_PATH=.../storage провайдер
-        // создавал «проект рядом с проектом» — артефактный каталог.
+        // Корень проекта — единая точка определения (APP_ROOT_PATH /
+        // ProjectRoot, см. PathResolver). FS_BASE_PATH учитывается только
+        // как устаревший fallback. Нормализация запрещает создавать
+        // «проект рядом с проектом» при историческом …/storage-значении.
         $basePath = \Core\System\Security\PathResolver::normalizeRootPath(
-            (string) ($this->config->get('FS_BASE_PATH') ?: getcwd())
+            (string) ($this->config->get('FS_BASE_PATH') ?? ''),
+            (string) ($this->config->get('APP_ROOT_PATH') ?? '')
         );
 
         $storage = $basePath . DIRECTORY_SEPARATOR . 'storage';

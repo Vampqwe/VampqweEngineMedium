@@ -88,13 +88,12 @@ class SecurityManager
      */
     public static function fromConfig(Config $config, Logger $logger): self
     {
-        // FS_BASE_PATH — это КОРЕНЬ проекта (каталог с index.php/), но
-        // исторически в config.env его указывали как путь к storage/.
-        // Нормализуем: …/storage → …/ , иначе rate-limiter создавал
-        // «проект рядом с проектом» (артефакт вида 'h:\...\storage'
-        // со своим .rate_limits внутри).
+        // Корень проекта — из единого резолвера (APP_ROOT_PATH / ProjectRoot,
+        // см. PathResolver). FS_BASE_PATH — только устаревший fallback:
+        // …/storage → родитель, недостоверный путь → реальный корень движка.
         $basePath = PathResolver::normalizeRootPath(
-            $config->get('FS_BASE_PATH', getcwd()) ?: getcwd()
+            (string) ($config->get('FS_BASE_PATH') ?? ''),
+            (string) ($config->get('APP_ROOT_PATH') ?? '')
         );
         $enforceBasePath = $config->getBool('FS_ENFORCE_BASE_PATH', true);
 

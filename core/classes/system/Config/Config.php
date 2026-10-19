@@ -216,13 +216,19 @@ final class Config
             // Ищем config.env детерминированно, НЕ по getcwd(): при запуске
             // CLI-скриптов или systemd-юнитов из другого cwd «конфиг рядом»
             // — это лотерея (чужой конфиг или запоздалый exception).
-            // Порядок поиска: VCORE_ROOT → корень движка от __FILE__ → getcwd().
+            // Порядок поиска: VCORE_ROOT → APP_ROOT_PATH из config.env рядом
+            // с движком → корень движка от __FILE__ → getcwd().
             $candidates = [];
 
             $root = defined('VCORE_ROOT') ? rtrim((string) VCORE_ROOT, '/\\') : null;
             if ($root !== null && $root !== '') {
                 $candidates[] = $root . DIRECTORY_SEPARATOR . 'config.env';
             }
+
+            // Канонический корень проекта (APP_ROOT_PATH) — единая точка
+            // определения для всего движка (см. ProjectRoot).
+            $projectRoot = \Core\System\Application\ProjectRoot::get();
+            $candidates[] = $projectRoot . DIRECTORY_SEPARATOR . 'config.env';
 
             // core/classes/system/Config/Config.php → корень проекта на 4 уровня выше
             $candidates[] = dirname(__DIR__, 4) . DIRECTORY_SEPARATOR . 'config.env';

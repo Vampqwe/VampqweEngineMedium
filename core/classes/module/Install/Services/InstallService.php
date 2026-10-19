@@ -54,25 +54,27 @@ class InstallService
     private string $basePath;
 
     /**
-     * @param string|null $basePath Корень приложения. По умолчанию вычисляется
-     *        от расположения класса (как раньше). Инжектируется сервис-провайдером
-     *        из конфига FS_BASE_PATH — иначе мастер читал бы storage/.installed,
-     *        .install_key и .install_seed не из того корня (расхождение путей
-     *        ломало guard «уже установлено» и шифрование сессии).
+     * @param string|null $basePath Корень приложения. По умолчанию — единый
+     *        резолвер ProjectRoot (APP_ROOT_PATH из config.env / fallback от
+     *        расположения движка). Инжектируется сервис-провайдером — иначе
+     *        мастер читал бы storage/.installed, .install_key и .install_seed
+     *        не из того корня (расхождение путей ломало guard «уже установлено»
+     *        и шифрование сессии).
      */
     public function __construct(Config $config, ?string $basePath = null)
     {
         $this->config = $config;
-        // Нормализация корня приложения: в config.env FS_BASE_PATH может быть
-        // указан как путь к storage-каталогу (исторический формат OSPanel) —
-        // приводим его к корню проекта, иначе database/, config.env и т.д.
-        // искались бы внутри storage/.
-        // Единая нормализация корня (см. PathResolver): исторический
-        // storage-формат FS_BASE_PATH → корень проекта; недостоверный путь →
-        // fallback от расположения файлов движка.
+        // Единая нормализация корня проекта (см. PathResolver):
+        // канонический источник — APP_ROOT_PATH (через ProjectRoot);
+        // исторический storage-формат FS_BASE_PATH → корень проекта;
+        // недостоверный путь → fallback от расположения файлов движка.
         $this->basePath = \Core\System\Security\PathResolver::normalizeRootPath(
-            $basePath ?? dirname(__DIR__, 4)
+            (string) ($config->get('FS_BASE_PATH') ?? ''),
+            (string) ($config->get('APP_ROOT_PATH') ?? '')
         );
+        if ($basePath !== null && $basePath !== '') {
+            $this->basePath = \Core\System\Security\PathResolver::normalizeRootPath($basePath);
+        }
         // HMAC-ключ: из config.env (INSTALL_HMAC_KEY). При отсутствии —
         // deriveKey() от долгоживущего storage/.install_seed (стабилен между
         // процессами, в отличие от прежнего process-random fallback, который
@@ -396,7 +398,7 @@ class InstallService
             if (!file_exists($sqlFile)) {
                 return ['success' => false, 'message' => 'Файл database/structure.sql не найден'
                     . ' (искали: ' . $sqlFile . '; корень приложения: ' . $this->basePath
-                    . '; проверьте FS_BASE_PATH в config.env)'];
+                    . '; проверьте APP_ROOT_PATH в config.env)'];
             }
 
             $sql = file_get_contents($sqlFile);
