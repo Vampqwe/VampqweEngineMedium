@@ -256,15 +256,15 @@ final class Config
     }
 
     /**
-     * Корень проекта — каноническая настройка APP_ROOT_PATH через единый
-     * резолвер (см. ProjectRoot / PathResolver). Устаревший FS_BASE_PATH
-     * учитывается только как last-resort-подсказка для старых config.env.
+     * Корень проекта — ЕДИНСТВЕННАЯ точка входа: каноническая настройка
+     * APP_ROOT_PATH через единый резолвер (см. ProjectRoot / PathResolver).
+     * Все пути движка (storage/, logs/, views/, LOG_FILE, audit) вычисляются
+     * от этого корня. Устаревший FS_BASE_PATH больше НЕ читается.
      */
     public function getRootPath(): string
     {
         return \Core\System\Security\PathResolver::normalizeRootPath(
-            (string) ($this->get(\Core\System\Application\ProjectRoot::CONFIG_KEY) ?? ''),
-            (string) ($this->get('FS_BASE_PATH') ?? '')
+            (string) ($this->get(\Core\System\Application\ProjectRoot::CONFIG_KEY) ?? '')
         );
     }
 
@@ -279,6 +279,42 @@ final class Config
         return $subpath === ''
             ? $storage
             : $storage . DIRECTORY_SEPARATOR . ltrim($subpath, '/\\');
+    }
+
+    /**
+     * Каталог logs/ — всегда вычисляется от корня проекта (APP_ROOT_PATH).
+     */
+    public function getLogsPath(string $subpath = ''): string
+    {
+        $logs = $this->getRootPath() . DIRECTORY_SEPARATOR . 'logs';
+
+        return $subpath === ''
+            ? $logs
+            : $logs . DIRECTORY_SEPARATOR . ltrim($subpath, '/\\');
+    }
+
+    /**
+     * Разрешить путь конфига относительно корня проекта (единая точка
+     * входа — APP_ROOT_PATH, см. ProjectRoot / PathResolver).
+     *
+     * Правила:
+     *  - пустое значение → $default (тоже разрешается от корня);
+     *  - «виртуально абсолютный» путь (/log/app.log, \storage\x, C:/... и т.п.)
+     *    трактуется ОТНОСИТЕЛЬНО корня проекта: ведущие разделители снимаются;
+     *  - обычный относительный путь (logs/app.log) присоединяется к корню;
+     *  - результат нормализуется (.., .) и НЕ может выйти за пределы корня.
+     *
+     * Используется для LOG_FILE, SECURITY_AUDIT_FILE и подобных файловых
+     * настроек: в config.env пути задаются от корня, абсолютные пути в
+     * конфиге не нужны.
+     */
+    public function resolvePath(string $configuredPath, string $default = ''): string
+    {
+        return \Core\System\Security\PathResolver::resolveFromRoot(
+            $this->getRootPath(),
+            $configuredPath,
+            $default
+        );
     }
 
     /**

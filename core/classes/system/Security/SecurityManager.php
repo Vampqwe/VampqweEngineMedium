@@ -69,9 +69,9 @@ class SecurityManager
      *             Метод сохранён как делегат для обратной совместимости:
      *             $basePath трактуется как канонический APP_ROOT_PATH.
      */
-    public static function normalizeRootPath(string $basePath = '', string $legacyHint = ''): string
+    public static function normalizeRootPath(string $basePath = ''): string
     {
-        return PathResolver::normalizeRootPath($basePath, $legacyHint);
+        return PathResolver::normalizeRootPath($basePath);
     }
 
     /**
@@ -124,8 +124,15 @@ class SecurityManager
             $config->get('TRUSTED_PROXIES', '') ?? ''
         );
 
+        // Аудит пишется в отдельный файл; SECURITY_AUDIT_FILE задаётся
+        // ОТНОСИТЕЛЬНО корня проекта (APP_ROOT_PATH), напр.: /log/audit.log
         $auditLogger = new AuditLogger(
-            $logger,
+            $logger->forFile(
+                $config->resolvePath(
+                    (string) $config->get('SECURITY_AUDIT_FILE', ''),
+                    'logs/audit.log'
+                )
+            ),
             $masker,
             $config->getBool('SECURITY_AUDIT_ENABLED', true)
         );

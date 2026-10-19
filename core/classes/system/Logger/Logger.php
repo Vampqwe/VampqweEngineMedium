@@ -49,7 +49,13 @@ class Logger
         $this->config        = $config;
         $this->enabled       = $config->getBool('LOG_ENABLED', true);
         $this->minLevel      = LogLevel::fromString($config->get('LOG_LEVEL', 'debug'));
-        $this->logFile       = $config->get('LOG_FILE', 'logs/app.log');
+        // LOG_FILE — путь ОТНОСИТЕЛЬНО корня проекта (APP_ROOT_PATH):
+        // /log/app.log или logs/app.log → {корень}/log|logs/.... Абсолютные
+        // пути в конфиге не поддерживаются (единая точка входа — APP_ROOT_PATH).
+        $this->logFile       = $config->resolvePath(
+            (string) $config->get('LOG_FILE', ''),
+            'logs/app.log'
+        );
         $this->maxSize       = $config->getInt('LOG_MAX_SIZE', 10 * 1024 * 1024);
         $this->rotation      = $config->getBool('LOG_ROTATION', true);
         $this->dateFormat    = $config->get('LOG_DATE_FORMAT', 'Y-m-d H:i:s.u');
@@ -104,6 +110,18 @@ class Logger
     public function getFile(): string
     {
         return $this->logFile;
+    }
+
+    /**
+     * Копия логгера с другим целевым файлом (напр. отдельный аудит-лог).
+     * Уровень, формат и маскирование наследуются; поток — свой.
+     */
+    public function forFile(string $path): self
+    {
+        $clone = clone $this;
+        $clone->stream   = null;
+        $clone->logFile  = $path;
+        return $clone;
     }
 
     public function setMasker(?SensitiveDataMasker $masker): self
