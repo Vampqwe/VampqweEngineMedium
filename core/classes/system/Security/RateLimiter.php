@@ -118,48 +118,6 @@ class RateLimiter
 }
 
     /**
-     * Проверить, превышен ли лимит
-     */
-    public function tooManyAttempts(string $key): bool
-    {
-        if (!$this->enabled) {
-            return false;
-        }
-
-        $file = $this->getFilePath($key);
-        $attempts = $this->getAttempts($file);
-
-        $now = time();
-        $recent = array_filter(
-            $attempts,
-            fn(int $timestamp) => ($now - $timestamp) < $this->windowSeconds
-        );
-
-        return count($recent) >= $this->maxAttempts;
-    }
-
-    /**
-     * Получить количество оставшихся попыток
-     */
-    public function remainingAttempts(string $key): int
-    {
-        if (!$this->enabled) {
-            return PHP_INT_MAX;
-        }
-
-        $file = $this->getFilePath($key);
-        $attempts = $this->getAttempts($file);
-
-        $now = time();
-        $recent = array_filter(
-            $attempts,
-            fn(int $timestamp) => ($now - $timestamp) < $this->windowSeconds
-        );
-
-        return max(0, $this->maxAttempts - count($recent));
-    }
-
-    /**
      * Сбросить лимит для ключа
      */
     public function clear(string $key): void
@@ -172,69 +130,12 @@ class RateLimiter
     }
 
     /**
-     * Сбросить все лимиты
-     */
-    public function clearAll(): void
-    {
-        $files = glob($this->storagePath . DIRECTORY_SEPARATOR . '*.rl');
-
-        if ($files === false) {
-            return;
-        }
-
-        foreach ($files as $file) {
-            @unlink($file);
-        }
-    }
-
-    /**
      * Получить ключ для IP-адреса
      */
     public static function keyForIp(?string $ip = null): string
     {
         $ip = $ip ?? ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
         return 'ip:' . hash('sha256', $ip);
-    }
-
-    /**
-     * Получить ключ для пользователя
-     */
-    public static function keyForUser(string|int $userId): string
-    {
-        return 'user:' . $userId;
-    }
-
-    /**
-     * Получить ключ для действия
-     */
-    public static function keyForAction(string $action, ?string $identifier = null): string
-    {
-        $key = 'action:' . $action;
-
-        if ($identifier !== null) {
-            $key .= ':' . $identifier;
-        }
-
-        return $key;
-    }
-
-    /**
-     * Установить лимиты
-     */
-    public function setLimits(int $maxAttempts, int $windowSeconds): self
-    {
-        $this->maxAttempts = $maxAttempts;
-        $this->windowSeconds = $windowSeconds;
-        return $this;
-    }
-
-    /**
-     * Включить/выключить
-     */
-    public function setEnabled(bool $enabled): self
-    {
-        $this->enabled = $enabled;
-        return $this;
     }
 
     // ─── Приватные методы ───

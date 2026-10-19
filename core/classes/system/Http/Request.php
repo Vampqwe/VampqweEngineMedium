@@ -23,7 +23,6 @@ declare(strict_types=1);
 namespace Core\System\Http;
 
 use Core\System\Config\Config;
-use Core\System\Map\Map;
 use Core\System\Security\SecurityException;
 use Core\System\Security\TrustedProxy;
 
@@ -254,14 +253,6 @@ class Request
         return array_key_exists($key, $this->query);
     }
 
-    /**
-     * Получить query как Map
-     */
-    public function queryMap(): Map
-    {
-        return Map::make($this->query);
-    }
-
     // ─── POST data ───
 
     /**
@@ -417,14 +408,6 @@ class Request
         $key = strtolower(str_replace('_', '-', $name));
 
         return isset($this->headers[$key]);
-    }
-
-    /**
-     * Получить заголовки как Map
-     */
-    public function headerMap(): Map
-    {
-        return Map::make($this->headers);
     }
 
     // ─── Content-Type / Accept ───

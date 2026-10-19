@@ -166,20 +166,6 @@ class CsrfToken
     }
 
     /**
-     * Валидировать токен из POST-запроса
-     *
-     * @throws SecurityException
-     */
-    public function validateRequest(): bool
-    {
-        $token = $_POST[$this->tokenName]
-            ?? $_SERVER['HTTP_X_CSRF_TOKEN']
-            ?? null;
-
-        return $this->validate($token);
-    }
-
-    /**
      * Получить HTML-поле с токеном
      */
     public function getField(): string
