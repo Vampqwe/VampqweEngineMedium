@@ -1,1 +1,2 @@
-vendor/
+storage/.installed
+storage/.rate_limits/
