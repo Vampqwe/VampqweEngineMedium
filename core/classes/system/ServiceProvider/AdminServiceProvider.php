@@ -51,19 +51,12 @@ class AdminServiceProvider extends ServiceProvider
         $db = $this->container->get(DataBase::class);
         $config = $this->config;
 
-        // ИСПРАВЛЕНО: корень приложения берётся из конфига (FS_BASE_PATH),
-        // иначе InstallService вычислял путь от __DIR__ и в проде читал
-        // storage/.installed, .install_key и .install_seed не из того корня.
-        // Нормализация: FS_BASE_PATH может указывать на storage-каталог
-        // (исторический формат) — приводим к корню проекта.
-        $basePath = (string) ($config->get('FS_BASE_PATH') ?: dirname(__DIR__, 5));
-        $basePath = rtrim($basePath, '/\\');
-        if (is_dir($basePath) && strtolower(basename($basePath)) === 'storage') {
-            $basePath = dirname($basePath);
-        } elseif (!is_dir($basePath) || !is_file($basePath . '/index.php')) {
-            // Недостоверный путь в конфиге — fallback на корень проекта от __DIR__.
-            $basePath = dirname(__DIR__, 5);
-        }
+        // Корень приложения берётся из конфига (FS_BASE_PATH) и нормализуется
+        // единым резолвером (см. PathResolver): storage-путь → родитель,
+        // недостоверный путь → fallback на реальный корень проекта.
+        $basePath = \Core\System\Security\PathResolver::normalizeRootPath(
+            (string) ($config->get('FS_BASE_PATH', '') ?: getcwd())
+        );
         $this->container->singleton(InstallService::class, fn() => 
             new InstallService($config, $basePath)
         );
@@ -120,9 +113,9 @@ class AdminServiceProvider extends ServiceProvider
             $container->get(Template::class)
         );
 
-        // ИСПРАВЛЕНО: конструкторы контроллеров требуют SecurityManager
-        // (Pages 3→4, Import 5→6, Menu 2→3). Без него любой GET/POST в этих
-        // разделах админки давал ArgumentCountError (fatal).
+        // Контроллеры Admin-модуля получают SecurityManager обязательным
+        // аргументом конструктора (CSRF/audit) — порядок параметров должен
+        // совпадать с сигнатурами контроллеров.
         $pagesController = static fn(): PagesController => new PagesController(
             $container->get(PageService::class),
             $container->get(AdminService::class),

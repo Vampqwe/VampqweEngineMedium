@@ -104,7 +104,7 @@ class AuthController
             return Response::redirect('/admin/login');
         }
 
-        // ИСПРАВЛЕНО: используем input() вместо getPost()
+        // input() читает POST+GET из единой точки (параметры формы приходят POST'ом)
         $email = trim($request->input('email', ''));
         $password = $request->input('password', '');
 
@@ -115,7 +115,7 @@ class AuthController
 
         // 1. Проверяем супер-админа (из config.env)
         if ($this->superAdminAuth->isSuperAdmin($email, $password)) {
-            // ИСПРАВЛЕНО: регенерация ID сессии при входе (защита от session fixation)
+            // loginAdmin() регенерирует ID сессии при входе (защита от session fixation)
             $this->session->loginAdmin($this->superAdminAuth->getSuperAdminData());
             $this->adminService->setFlash('success', 'Добро пожаловать, Супер Администратор!');
             return Response::redirect($this->safePostLoginRedirect());
@@ -128,7 +128,7 @@ class AuthController
         );
 
         if ($user && password_verify($password, $user['password_hash'])) {
-            // ИСПРАВЛЕНО: регенерация ID сессии при входе (защита от session fixation)
+            // loginAdmin() регенерирует ID сессии при входе (защита от session fixation)
             $this->session->loginAdmin([
                 'id' => $user['id'],
                 'email' => $user['email'],
@@ -176,7 +176,7 @@ class AuthController
      */
     public function logout(Request $request): Response
     {
-        // ИСПРАВЛЕНО: снятие аутентификации + регенерация ID (flash-сообщения сохраняются)
+        // logoutAdmin() снимает аутентификацию и регенерирует ID, сохраняя flash-сообщения
         $this->session->forgetTransientMarkers('viewed_page_');
         $this->session->logoutAdmin();
         $this->adminService->setFlash('success', 'Вы вышли из системы');

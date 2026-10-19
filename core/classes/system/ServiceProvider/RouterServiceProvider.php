@@ -42,10 +42,9 @@ class RouterServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        // ИСПРАВЛЕНО: static-костыль удалён. Container::singleton() корректно
-        // кеширует результат фабрики в $instances (см. Container::get, шаг 3),
-        // поэтому ленивая фабрика гарантирует единственный экземпляр Router
-        // без утечки состояния между приложениями в одном процессе.
+        // Container::singleton() кеширует результат фабрики в $instances,
+        // поэтому ленивое создание гарантирует единственный экземпляр Router
+        // в рамках контейнера (без утечки состояния между приложениями).
         $this->container->singleton(Router::class, fn() => new Router(
             $this->container->get(\Core\System\Http\Request::class),
             $this->config

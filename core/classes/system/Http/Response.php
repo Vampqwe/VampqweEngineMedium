@@ -254,12 +254,14 @@ class Response
         $response = new self($content, $statusCode);
         return $response->setPlainTextContentType();
     }
-	// ─── XML ───  ← НОВЫЙ МЕТОД
-	public static function xml(string $content, StatusCode $statusCode = StatusCode::OK): self
-	{
-		$response = new self($content, $statusCode);
-		return $response->setXmlContentType();
-	}
+    /**
+     * XML-ответ (Content-Type: application/xml).
+     */
+    public static function xml(string $content, StatusCode $statusCode = StatusCode::OK): self
+    {
+        $response = new self($content, $statusCode);
+        return $response->setXmlContentType();
+    }
     // ─── Redirect ───
 
     /**

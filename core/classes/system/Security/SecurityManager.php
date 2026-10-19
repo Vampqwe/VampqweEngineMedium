@@ -65,43 +65,22 @@ class SecurityManager
     /**
      * Нормализация корня проекта из FS_BASE_PATH.
      *
-     * Правила (совпадают с AdminServiceProvider / InstallService):
-     *  - путь заканчивается на storage/ → поднимаемся на уровень вверх;
-     *  - путь не существует или это не корень проекта (нет index.php)
-     *    → fallback: ищем index.php вверх от каталога core/classes/system/Security.
+     * @deprecated Используйте \Core\System\Security\PathResolver::normalizeRootPath().
+     *             Метод сохранён как делегат для обратной совместимости.
      */
     public static function normalizeRootPath(string $basePath): string
     {
-        $basePath = rtrim($basePath, '/\\');
-
-        if ($basePath !== '' && is_dir($basePath)
-            && strtolower(basename($basePath)) === 'storage') {
-            return dirname($basePath);
-        }
-
-        if ($basePath === '' || !is_dir($basePath) || !is_file($basePath . DIRECTORY_SEPARATOR . 'index.php')) {
-            // Недостоверный путь — fallback на реальный корень проекта от __DIR__.
-            return dirname(__DIR__, 5);
-        }
-
-        return $basePath;
+        return PathResolver::normalizeRootPath($basePath);
     }
 
     /**
-     * Каталог storage/ внутри корня проекта. Если корень сам указывает
-     * на storage-каталог (маловероятный, но исторический вариант) —
-     * возвращаем его как есть, без вложенного storage/storage.
+     * Каталог storage/ внутри корня проекта.
+     *
+     * @deprecated Используйте \Core\System\Security\PathResolver::resolveStorageDir().
      */
     public static function resolveStorageDir(string $rootPath): string
     {
-        $rootPath = rtrim($rootPath, '/\\');
-
-        if ($rootPath !== '' && strtolower(basename($rootPath)) === 'storage'
-            && is_dir($rootPath)) {
-            return $rootPath;
-        }
-
-        return $rootPath . DIRECTORY_SEPARATOR . 'storage';
+        return PathResolver::resolveStorageDir($rootPath);
     }
 
     /**
@@ -114,7 +93,7 @@ class SecurityManager
         // Нормализуем: …/storage → …/ , иначе rate-limiter создавал
         // «проект рядом с проектом» (артефакт вида 'h:\...\storage'
         // со своим .rate_limits внутри).
-        $basePath = self::normalizeRootPath(
+        $basePath = PathResolver::normalizeRootPath(
             $config->get('FS_BASE_PATH', getcwd()) ?: getcwd()
         );
         $enforceBasePath = $config->getBool('FS_ENFORCE_BASE_PATH', true);
@@ -131,7 +110,7 @@ class SecurityManager
         $rateLimiter = new RateLimiter(
             // Хранилище rate-limit — внутри storage/ (закрыт .htaccess,
             // лежит в .gitignore), а не в корне проекта.
-            self::resolveStorageDir($basePath) . DIRECTORY_SEPARATOR . '.rate_limits',
+            PathResolver::resolveStorageDir($basePath) . DIRECTORY_SEPARATOR . '.rate_limits',
             $config->getInt('SECURITY_RATE_LIMIT_MAX', 60),
             $config->getInt('SECURITY_RATE_LIMIT_WINDOW', 60),
             $config->getBool('SECURITY_RATE_LIMIT_ENABLED', true)
