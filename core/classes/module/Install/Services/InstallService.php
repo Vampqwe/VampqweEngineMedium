@@ -32,12 +32,14 @@ use Throwable;
 class InstallService
 {
     /**
-     * Ключ для шифрования временного конфига БД в сессии мастера установки.
-     * Управляется через config.env: INSTALL_HMAC_KEY (секрет, не должен
-     * попадать в репозиторий). При отсутствии — process-random fallback:
-     * payload переживает ТОЛЬКО один PHP-процесс. Это криптографически
-     * безопасно, но на multi-worker FPM/Apache шаг 2 может не расшифровать
-     * payload шага 1 (требуются sticky-сессии либо явный INSTALL_HMAC_KEY).
+     * Ключ HMAC для проверки сохранённого хэша ключа активации
+     * (storage/.install_key) и участия в выводе сессионного ключа шифрования.
+     *
+     * Берётся из config.env: INSTALL_HMAC_KEY (секрет, не должен попадать
+     * в репозиторий). Если секрет не задан — используется deriveKey(),
+     * привязанный к долгоживущему storage/.install_seed: он стабилен между
+     * процессами/воркерами, поэтому смена ключа активации через
+     * bin/install-key.php работает корректно даже без INSTALL_HMAC_KEY.
      */
     private string $hmacKey;
 
@@ -71,17 +73,22 @@ class InstallService
         $this->basePath = \Core\System\Security\PathResolver::normalizeRootPath(
             $basePath ?? dirname(__DIR__, 4)
         );
-        // HMAC-ключ: из config.env (INSTALL_HMAC_KEY), иначе process-random.
+        // HMAC-ключ: из config.env (INSTALL_HMAC_KEY). При отсутствии —
+        // deriveKey() от долгоживущего storage/.install_seed (стабилен между
+        // процессами, в отличие от прежнего process-random fallback, который
+        // делал storeActivationKeyHash/verifyStoredActivationKey неработоспособными).
         $configuredKey = trim((string) $config->get('INSTALL_HMAC_KEY', ''));
-        $this->hmacKey = $configuredKey !== ''
-            ? $configuredKey
-            : bin2hex(random_bytes(32));
+
         // Долгоживущий случайный seed: привязывает производный ключ
         // шифрования к данному экземпляру приложения. Seed сохраняется
         // в storage/.install_seed, чтобы оставаться стабильным между
         // запросами инициализированного PHP-FPM/Apache (иначе расшифровать
         // конфиг на шаге 2+ было бы невозможно).
         $this->csrfSeed = $this->loadOrCreateSeed();
+
+        $this->hmacKey = $configuredKey !== ''
+            ? $configuredKey
+            : hash_hmac('sha256', 'install-hmac-key', $this->csrfSeed);
     }
 
     /**
