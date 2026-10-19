@@ -34,7 +34,7 @@ class FileSystemServiceProvider extends ServiceProvider
         // Нормализуем корень (…/storage → корень проекта), иначе при
         // историческом значении FS_BASE_PATH=.../storage провайдер
         // создавал «проект рядом с проектом» — артефактный каталог.
-        $basePath = \Core\System\Security\SecurityManager::normalizeRootPath(
+        $basePath = \Core\System\Security\PathResolver::normalizeRootPath(
             (string) ($this->config->get('FS_BASE_PATH') ?: getcwd())
         );
 

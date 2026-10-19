@@ -35,8 +35,9 @@ class InstallService
      * Ключ для шифрования временного конфига БД в сессии мастера установки.
      * Управляется через config.env: INSTALL_HMAC_KEY (секрет, не должен
      * попадать в репозиторий). При отсутствии — process-random fallback:
-     * payload переживает только один процесс (безопасно, но мастер требует
-     * sticky-сессий; штатная установка всё равно идёт в одном воркере).
+     * payload переживает ТОЛЬКО один PHP-процесс. Это криптографически
+     * безопасно, но на multi-worker FPM/Apache шаг 2 может не расшифровать
+     * payload шага 1 (требуются sticky-сессии либо явный INSTALL_HMAC_KEY).
      */
     private string $hmacKey;
 
@@ -64,16 +65,12 @@ class InstallService
         // указан как путь к storage-каталогу (исторический формат OSPanel) —
         // приводим его к корню проекта, иначе database/, config.env и т.д.
         // искались бы внутри storage/.
-        $base = rtrim($basePath ?? dirname(__DIR__, 5), '/\\');
-        if (is_dir($base) && strtolower(basename($base)) === 'storage') {
-            // Указан storage-каталог (исторический формат FS_BASE_PATH) — поднимаемся к корню.
-            $base = dirname($base);
-        } elseif (!is_dir($base) || !is_file($base . '/index.php')) {
-            // Путь из конфига недостоверен (например, Windows-путь на Linux-хосте) —
-            // fallback: корень проекта, вычисленный от расположения этого класса.
-            $base = dirname(__DIR__, 5);
-        }
-        $this->basePath = $base;
+        // Единая нормализация корня (см. PathResolver): исторический
+        // storage-формат FS_BASE_PATH → корень проекта; недостоверный путь →
+        // fallback от расположения файлов движка.
+        $this->basePath = \Core\System\Security\PathResolver::normalizeRootPath(
+            $basePath ?? dirname(__DIR__, 4)
+        );
         // HMAC-ключ: из config.env (INSTALL_HMAC_KEY), иначе process-random.
         $configuredKey = trim((string) $config->get('INSTALL_HMAC_KEY', ''));
         $this->hmacKey = $configuredKey !== ''
@@ -283,6 +280,103 @@ class InstallService
         }
     }
 
+    /**
+     * Разбить SQL на операторы по «;», корректно обрабатывая:
+     *  - строковые литералы в '...' и "..." (MySQL-экранп ' \ \' и SQL-двойные '');
+     *  - однострочные комментарии (-- …, # …) и блочные /* ... *​/;
+     *  - MySQL conditional-комментарии /*! ... *\/ сохраняются как код.
+     *
+     * @return string[] неотфильтрованные непустые операторы (без завершающей «;»)
+     */
+    public static function splitSqlStatements(string $sql): array
+    {
+        $statements = [];
+        $current = '';
+        $len = strlen($sql);
+        $i = 0;
+        $inString = false;
+        $stringChar = '';
+
+        while ($i < $len) {
+            $ch = $sql[$i];
+
+            if ($inString) {
+                $current .= $ch;
+                if ($ch === '\\' && $i + 1 < $len) {
+                    // MySQL backslash-escape: следующий символ часть литерала
+                    $current .= $sql[$i + 1];
+                    $i += 2;
+                    continue;
+                }
+                if ($ch === $stringChar) {
+                    if ($i + 1 < $len && $sql[$i + 1] === $stringChar) {
+                        // SQL-удвоение кавычки ('' внутри '...') — остаёмся в строке
+                        $current .= $sql[$i + 1];
+                        $i += 2;
+                        continue;
+                    }
+                    $inString = false;
+                }
+                $i++;
+                continue;
+            }
+
+            // Вне строки: комментарии
+            if ($ch === '-' && $i + 1 < $len && $sql[$i + 1] === '-') {
+                if ($i + 2 < $len && $sql[$i + 2] === '!') {
+                    // /*! ... */ — executable comment MySQL: сохраняем целиком
+                    $close = strpos($sql, '*/', $i);
+                    if ($close !== false) {
+                        $current .= substr($sql, $i, $close - $i + 2);
+                        $i = $close + 2;
+                        continue;
+                    }
+                }
+                $eol = strpos($sql, "\n", $i);
+                $i = $eol === false ? $len : $eol; // отбрасываем до конца строки
+                continue;
+            }
+            if ($ch === '#') {
+                $eol = strpos($sql, "\n", $i);
+                $i = $eol === false ? $len : $eol;
+                continue;
+            }
+            if ($ch === '/' && $i + 1 < $len && $sql[$i + 1] === '*') {
+                $close = strpos($sql, '*/', $i + 2);
+                $i = $close === false ? $len : $close + 2; // обычный /* */ — вырезаем
+                continue;
+            }
+
+            if ($ch === "'" || $ch === '"') {
+                $inString = true;
+                $stringChar = $ch;
+                $current .= $ch;
+                $i++;
+                continue;
+            }
+
+            if ($ch === ';') {
+                $stmt = trim($current);
+                if ($stmt !== '') {
+                    $statements[] = $stmt;
+                }
+                $current = '';
+                $i++;
+                continue;
+            }
+
+            $current .= $ch;
+            $i++;
+        }
+
+        $stmt = trim($current);
+        if ($stmt !== '') {
+            $statements[] = $stmt;
+        }
+
+        return $statements;
+    }
+
     public function createTables(array $dbConfig): array
     {
         try {
@@ -296,33 +390,12 @@ class InstallService
             }
 
             $sql = file_get_contents($sqlFile);
-            $sql = preg_replace('/--.*$/m', '', $sql);
-            $sql = preg_replace('/\/\*.*?\*\//s', '', $sql);
 
-            $statements = [];
-            $current = '';
-            $inString = false;
-            $stringChar = '';
-
-            for ($i = 0; $i < strlen($sql); $i++) {
-                $char = $sql[$i];
-                $nextChar = $i + 1 < strlen($sql) ? $sql[$i + 1] : '';
-                if (!$inString && ($char === '"' || $char === "'")) {
-                    $inString = true;
-                    $stringChar = $char;
-                } elseif ($inString && $char === $stringChar && $nextChar !== '\\') {
-                    $inString = false;
-                }
-                if ($char === ';' && !$inString) {
-                    $stmt = trim($current);
-                    if (!empty($stmt)) $statements[] = $stmt;
-                    $current = '';
-                } else {
-                    $current .= $char;
-                }
-            }
-            $stmt = trim($current);
-            if (!empty($stmt)) $statements[] = $stmt;
+            // Сплиттер SQL: режешь по ';' только вне строковых литералов
+            // и комментариев; комментарии ('-- …', '# …', '/* … */') вырезаются
+            // сканером, а не глобальным регэкспом — иначе 'текст -- что-то'
+            // внутри INSERT портится.
+            $statements = self::splitSqlStatements((string)$sql);
 
             foreach ($statements as $statement) {
                 if (empty($statement) || str_starts_with($statement, 'SET ') || str_starts_with($statement, '/*!') || str_starts_with($statement, 'START TRANSACTION') || str_starts_with($statement, 'COMMIT')) {
@@ -388,25 +461,6 @@ class InstallService
         } catch (Throwable $e) {
             if ($pdo !== null && $pdo->inTransaction()) $pdo->rollBack();
             return ['success' => false, 'message' => 'Ошибка заполнения данных: ' . $e->getMessage()];
-        }
-    }
-
-    public function updateConfig(string $key, string $value): array
-    {
-        try {
-            $configFile = $this->basePath . '/config.env';
-            $content = file_get_contents($configFile);
-            $pattern = '/^' . preg_quote($key, '/') . '=.*/m';
-            $replacement = $key . '=' . $value;
-            if (preg_match($pattern, $content)) {
-                $content = preg_replace($pattern, $replacement, $content);
-            } else {
-                $content .= "\n" . $replacement;
-            }
-            file_put_contents($configFile, $content);
-            return ['success' => true, 'message' => 'Конфиг обновлён'];
-        } catch (Throwable $e) {
-            return ['success' => false, 'message' => 'Ошибка обновления конфига: ' . $e->getMessage()];
         }
     }
 
@@ -610,43 +664,50 @@ class InstallService
             return ['changed' => false, 'message' => 'Нет прав на запись config.env — проверьте политику MySQL вручную'];
         }
 
-        $content   = (string) file_get_contents($configFile);
-        $original  = $content;
-        $changed   = false;
+        $content = (string) file_get_contents($configFile);
+        $lines   = preg_split('/\r?\n/', $content);
+        $out     = [];
+        $changed = false;
 
-        // 1. DB_DRIVER: любое значение, кроме mysql/mariadb → mysql.
-        if (preg_match('/^DB_DRIVER=(.*)$/m', $content, $m)) {
-            $driver = strtolower(trim($m[1]));
-            if ($driver !== 'mysql' && $driver !== 'mariadb') {
-                $content = preg_replace('/^DB_DRIVER=.*$/m', 'DB_DRIVER=mysql', $content);
-                $changed = true;
+        foreach ($lines as $line) {
+            // Строки комментариев и пустые строки сохраняем как есть.
+            if (preg_match('/^\s*(#|;)?.*DB_DRIVER=(.*)$/i', $line, $m)
+                && !preg_match('/^\s*[#;]/', $line)) {
+                $driver = strtolower(trim($m[2]));
+                if ($driver !== 'mysql' && $driver !== 'mariadb') {
+                    $out[] = 'DB_DRIVER=mysql';
+                    $changed = true;
+                } else {
+                    $out[] = $line;
+                }
+                continue;
             }
-        } else {
-            $content = "DB_DRIVER=mysql\n" . $content;
-            $changed = true;
+
+            // DB_PATH — sqlite-след: удаляем только саму строку значения
+            // (не комментарии и не упоминания «sqlite» в других местах файла).
+            if (preg_match('/^\s*DB_PATH=/i', $line)) {
+                $changed = true; // пропускаем строку — удаляем
+                continue;
+            }
+
+            $out[] = $line;
         }
 
-        // 2. Убираем sqlite-следы из рабочего конфига.
-        if (preg_match('/^DB_PATH=.*$/m', $content)) {
-            $pathValue = '';
-            if (preg_match('/^DB_PATH=(.*)$/m', $content, $m2)) {
-                $pathValue = strtolower(trim($m2[1]));
-            }
-            if ($pathValue !== '' || str_contains($content, 'sqlite')) {
-                $content = preg_replace('/^DB_PATH=.*\n?/m', '', $content);
-                $changed = true;
-            }
+        // Если секции DB_DRIVER вообще не было — добавляем её в конец.
+        if (!preg_match('/^\s*DB_DRIVER=/im', $content)) {
+            $out[] = 'DB_DRIVER=mysql';
+            $changed = true;
         }
 
         if (!$changed) {
             return ['changed' => false, 'message' => 'Политика MySQL уже соблюдена'];
         }
 
-        if (file_put_contents($configFile, $content) === false) {
+        $newContent = implode("\n", $out);
+        if (file_put_contents($configFile, $newContent) === false) {
             return ['changed' => false, 'message' => 'Не удалось записать config.env'];
         }
 
-        unset($original);
         return ['changed' => true, 'message' => 'config.env приведён к политике MySQL (SQLite-параметры удалены)'];
     }
 }

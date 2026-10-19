@@ -91,8 +91,8 @@ class InstallController
             ]);
 
             if ($result['success']) {
-                // ИСПРАВЛЕНО: конфиг БД (включая пароль) шифруется перед
-                // помещением в сессию — раньше хранился в открытом виде.
+                // Конфиг БД (включая пароль) шифруется перед помещением
+                // в сессию — в открытом виде он там храниться не должен.
                 $this->sessions->set('install_db_enc', $this->installService->encryptDbConfig($result['config']));
                 return Response::redirect('/admin/install/step2');
             }
@@ -214,9 +214,8 @@ class InstallController
 
     public function step5(Request $request): Response
     {
-        // ИСПРАВЛЕНО (HTTP-семантика + идемпотентность): шаг 5 больше не
-        // выполняет изменяющие действия на GET. Финализация выполняется
-        // POST-запросом; повторный GET просто показывает результат.
+        // HTTP-семантика + идемпотентность: шаг 5 выполняет изменяющие
+        // действия только по POST; повторный GET просто показывает результат.
         $dbConfig = $this->requireDbConfig();
 
         if ($request->isPost()) {

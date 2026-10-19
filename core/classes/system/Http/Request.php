@@ -580,18 +580,25 @@ class Request
             static fn(string $ip): bool => filter_var($ip, FILTER_VALIDATE_IP) !== false
         ));
 
-        // Идём от ближайшего адреса к клиенту и отбрасываем доверенные прокси.
-        // Первый недоверенный адрес в цепочке и есть адрес клиента.
-        $clientAddress = $remoteAddress;
-        foreach (array_reverse($forwardedAddresses) as $forwardedAddress) {
-            if (!$this->isTrustedProxy($clientAddress)) {
-                break;
-            }
-
-            $clientAddress = $forwardedAddress;
+        // Идём справа налево по XFF (от ближайшего к нам прокси к клиенту):
+        // текущий кандидат признаётся клиентом только если он сам является
+        // доверенным прокси — тогда переходим к следующему адресу левее.
+        // Если самый левый незакрытый адрес тоже из TRUSTED_PROXIES (например,
+        // allowlist задан широкой CIDR-сетью, включающей клиентские подсети),
+        // дальнейшее доверие к XFF теряет смысл — возвращаем REMOTE_ADDR.
+        $chain = array_reverse($forwardedAddresses);
+        $candidate = $remoteAddress;
+        while ($chain !== [] && $this->isTrustedProxy($candidate)) {
+            $candidate = array_pop($chain);
         }
 
-        return $clientAddress;
+        if ($chain === [] && $candidate !== $remoteAddress && $this->isTrustedProxy($candidate)) {
+            // Весь XFF-список состоит из доверенных адресов: последний элемент
+            // не может быть «клиентом за прокси» — вероятна подмена цепочки.
+            return $remoteAddress;
+        }
+
+        return $candidate;
     }
 
     /**
