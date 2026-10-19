@@ -322,16 +322,24 @@ class InstallService
             }
 
             // Вне строки: комментарии
-            if ($ch === '-' && $i + 1 < $len && $sql[$i + 1] === '-') {
+            if ($ch === '/' && $i + 1 < $len && $sql[$i + 1] === '*') {
                 if ($i + 2 < $len && $sql[$i + 2] === '!') {
                     // /*! ... */ — executable comment MySQL: сохраняем целиком
-                    $close = strpos($sql, '*/', $i);
+                    // (обрабатывается ДО ветки обычных /* */ и до `--`,
+                    // иначе проверка `$ch === '-'` никогда не срабатывала).
+                    $close = strpos($sql, '*/', $i + 2);
                     if ($close !== false) {
                         $current .= substr($sql, $i, $close - $i + 2);
                         $i = $close + 2;
                         continue;
                     }
                 }
+                $close = strpos($sql, '*/', $i + 2);
+                $i = $close === false ? $len : $close + 2; // обычный /* */ — вырезаем
+                continue;
+            }
+
+            if ($ch === '-' && $i + 1 < $len && $sql[$i + 1] === '-') {
                 $eol = strpos($sql, "\n", $i);
                 $i = $eol === false ? $len : $eol; // отбрасываем до конца строки
                 continue;
@@ -339,11 +347,6 @@ class InstallService
             if ($ch === '#') {
                 $eol = strpos($sql, "\n", $i);
                 $i = $eol === false ? $len : $eol;
-                continue;
-            }
-            if ($ch === '/' && $i + 1 < $len && $sql[$i + 1] === '*') {
-                $close = strpos($sql, '*/', $i + 2);
-                $i = $close === false ? $len : $close + 2; // обычный /* */ — вырезаем
                 continue;
             }
 
