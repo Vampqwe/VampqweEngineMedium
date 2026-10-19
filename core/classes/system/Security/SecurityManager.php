@@ -259,6 +259,12 @@ class SecurityManager
      */
     public function checkConfigPermissions(string $configPath): void
     {
+        // Флаг SECURITY_ENFORCE_CONFIG_PERMS=true означает «политика 0640
+        // включена ЕДИНООБРАЗНО»: он проверяется и здесь, и в конструкторе
+        // Config (там — минимальная защита от world-access, необходимая,
+        // потому что Config читается до инициализации SecurityManager).
+        // Раньше флаг применялся только к этой проверке, из-за чего файл
+        // с правами 0644 проходил Config::init(), но ронял bootstrap здесь.
         if (!$this->config->getBool('SECURITY_ENFORCE_CONFIG_PERMS', true)) {
             return;
         }
@@ -267,12 +273,12 @@ class SecurityManager
             return;
         }
 
-        $perms = fileperms($configPath) & 0777;
-
         // На Windows проверка прав не имеет смысла
         if (DIRECTORY_SEPARATOR === '\\') {
             return;
         }
+
+        $perms = fileperms($configPath) & 0777;
 
         // Допускаются только биты владельца rw и группы r.
         if (($perms & ~0640) !== 0) {

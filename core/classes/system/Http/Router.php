@@ -188,7 +188,15 @@ class Router
      */
     public function url(string $name, array $parameters = []): string
     {
-        $this->syncNamedRoutes();
+        if (!isset($this->namedRoutes[$name])) {
+            // Лень-синхронизация: имена проставляются fluent-методом
+            // Route::name() ПОСЛЕ addRoute(), поэтому карта на момент
+            // регистрации пуста. Пересобираем один раз при первом запросе
+            // URL (маршруты после boot уже не меняются), а не на каждый вызов.
+            $this->syncNamedRoutes();
+            $this->namedRoutesSynced = true;
+        }
+
         if (!isset($this->namedRoutes[$name])) {
             throw new \RuntimeException("Named route '{$name}' not found");
         }
@@ -210,7 +218,15 @@ class Router
     {
         $url = $this->url($name, $parameters);
         $baseUrl = rtrim($this->config->get('APP_BASE_URL', ''), '/');
-        return str_replace($baseUrl, '', $url);
+
+        // Срезаем только префикс, а не все вхождения подстроки: иначе путь
+        // вида '/blog/base-url-post' при APP_BASE_URL='/base-url' терял бы
+        // часть имени.
+        if ($baseUrl !== '' && str_starts_with($url, $baseUrl)) {
+            return substr($url, strlen($baseUrl));
+        }
+
+        return $url;
     }
 
     // ─── Геттеры ───
