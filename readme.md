@@ -101,7 +101,7 @@
 | `Logger`, `LogLevel` | `Logger/` | file-логгер с ротацией (`LOG_MAX_SIZE`) и маскировкой секретов |
 | `AuditLogger` | `Security/AuditLogger.php` | отдельный аудит-лог (`logs/audit.log`) |
 | `Validator` + `Rules/*` | `Validator/` | fluent-валидатор: required, email, minLength, maxLength, numeric, between, in, regex, url, date, custom |
-| `FileSystem`, `PathProbe` | `FileSystem/` | файловые операции с базовым путём `FS_BASE_PATH`, правами, лимитом размера |
+| `FileSystem`, `PathProbe` | `FileSystem/` | файловые операции с базовым путём `APP_ROOT_PATH` (через `Config::getRootPath()`), правами, лимитом размера |
 | `SecurityManager`, `CsrfToken`, `RateLimiter`, `SecurityHeaders`, `TrustedProxy`, `PathSanitizer`, `SensitiveDataMasker`, `HtmlSanitizer` | `Security/` | единая точка безопасности |
 | `SessionManager` | `Session/` | безопасные PHP-сессии (strict mode, HttpOnly, SameSite, Secure) |
 | `TimeDate`, `DateFormat`, `TimeUnit` | `TimeDate/` | дата/время по `TIMEZONE` |
@@ -122,7 +122,7 @@
 |---|---|
 | `ConfigServiceProvider` | грузит `config.env` |
 | `DataBaseServiceProvider` | singleton `DataBase` (MySQL, charset utf8mb4, connect timeout) |
-| `FileSystemServiceProvider` | singleton `FileSystem` c `FS_BASE_PATH` |
+| `FileSystemServiceProvider` | singleton `FileSystem` c корнем `APP_ROOT_PATH` |
 | `LoggerServiceProvider` | singleton `Logger` |
 | `SecurityServiceProvider` | `SecurityManager` (CSRF, rate limit, headers, audit, trusted proxies) |
 | `HttpServiceProvider` | `Request` из globals, `Response`, cookie |
@@ -289,7 +289,7 @@ DDL: `database/structure.sql` (только CREATE TABLE + индексы + FK, 
 
 1. Требования: PHP ≥ 8.1 (extensions: pdo_mysql, dom, mbstring обычно есть), MySQL/MariaDB, Apache (mod_rewrite) или любой сервер с front-controller правилом. Composer — только для генерации автозагрузчика: `composer dump-autoload` (пакетов нет).
 2. `cp config.env.example config.env` и заполнить:
-   - `FS_BASE_PATH` — абсолютный путь к `storage/` этого экземпляра;
+   - `APP_ROOT_PATH` — абсолютный путь к **корню проекта** (каталог с `index.php`; НЕ к `storage/`!) — единственная каноническая настройка базового пути; устаревший `FS_BASE_PATH` упразднён (читается лишь как last-resort-подсказка для старых конфигов, удалите его);
    - `DB_*` — параметры MySQL;
    - `SUPER_ADMIN_EMAIL/PASSWORD` — хэш пароля (см. §6);
    - `APP_BASE_URL`, `APP_ALLOWED_HOSTS`, `APP_NAME`;
@@ -359,7 +359,7 @@ DDL: `database/structure.sql` (только CREATE TABLE + индексы + FK, 
   URLs внутри контента переписываются на `/storage/...`, которые раздаёт движок (см. маршрут `/storage/{file}`).
 - Приоритет маршрутов: точное совпадение важнее шаблона (`/menu/items` раньше `/menu/items/{id}`).
 - Проект разрабатывается под shared-хостинг (`.osp/project.ini`, `.htaccess`), поэтому корень = webroot;
-  перенос точки входа в подкаталог потребует правки `.htaccess`, `FS_BASE_PATH` и `Config`.
+  перенос точки входа в подкаталог потребует правки `.htaccess`, `APP_ROOT_PATH` и `Config`.
 
 ---
 

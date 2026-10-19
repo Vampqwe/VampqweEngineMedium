@@ -256,6 +256,32 @@ final class Config
     }
 
     /**
+     * Корень проекта — каноническая настройка APP_ROOT_PATH через единый
+     * резолвер (см. ProjectRoot / PathResolver). Устаревший FS_BASE_PATH
+     * учитывается только как last-resort-подсказка для старых config.env.
+     */
+    public function getRootPath(): string
+    {
+        return \Core\System\Security\PathResolver::normalizeRootPath(
+            (string) ($this->get(\Core\System\Application\ProjectRoot::CONFIG_KEY) ?? ''),
+            (string) ($this->get('FS_BASE_PATH') ?? '')
+        );
+    }
+
+    /**
+     * Каталог storage/ — всегда вычисляется от корня проекта (APP_ROOT_PATH),
+     * а не из устаревшего FS_BASE_PATH.
+     */
+    public function getStoragePath(string $subpath = ''): string
+    {
+        $storage = \Core\System\Security\PathResolver::resolveStorageDir($this->getRootPath());
+
+        return $subpath === ''
+            ? $storage
+            : $storage . DIRECTORY_SEPARATOR . ltrim($subpath, '/\\');
+    }
+
+    /**
      * Целочисленное значение конфига.
      *
      * Пустое значение или мусор (не парсящийся в число) возвращает $default —

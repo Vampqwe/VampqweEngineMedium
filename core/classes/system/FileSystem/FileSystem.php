@@ -38,11 +38,8 @@ abstract class FileSystem
     {
         $this->config = $config;
         $this->pathSanitizer = $pathSanitizer ?? new PathSanitizer(
-            // Корень проекта — единый резолвер (APP_ROOT_PATH / ProjectRoot).
-            \Core\System\Security\PathResolver::normalizeRootPath(
-                (string) ($config->get('FS_BASE_PATH') ?? ''),
-                (string) ($config->get('APP_ROOT_PATH') ?? '')
-            ),
+            // Корень проекта — единый резолвер (канон — APP_ROOT_PATH).
+            $config->getRootPath(),
             $config->getBool('FS_ENFORCE_BASE_PATH', true)
         );
         $this->path = $this->resolvePath($path);

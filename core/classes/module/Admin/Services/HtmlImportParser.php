@@ -53,11 +53,16 @@ class HtmlImportParser
         $this->rules = is_file($rulesFile) ? (array) require $rulesFile : [];
         
         // Получаем реальный путь к storage (с правильным регистром)
-        $configBasePath = $config->get('FS_BASE_PATH', getcwd());
+        // Корень проекта — каноническая настройка APP_ROOT_PATH (единый резолвер,
+        // см. Config::getStoragePath()). storage/ всегда вычисляется от корня,
+        // устаревший FS_BASE_PATH для пути больше не используется.
+        $configBasePath = $config->getStoragePath();
         $realBasePath = realpath($configBasePath);
         
         if ($realBasePath === false) {
-            throw new \RuntimeException("FS_BASE_PATH не существует: {$configBasePath}");
+            throw new \RuntimeException(
+                "storage/ не существует: {$configBasePath}"
+                . ' (проверьте APP_ROOT_PATH в config.env)');
         }
         
         $this->basePath = $realBasePath;

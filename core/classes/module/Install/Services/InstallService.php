@@ -64,14 +64,9 @@ class InstallService
     public function __construct(Config $config, ?string $basePath = null)
     {
         $this->config = $config;
-        // Единая нормализация корня проекта (см. PathResolver):
-        // канонический источник — APP_ROOT_PATH (через ProjectRoot);
-        // исторический storage-формат FS_BASE_PATH → корень проекта;
-        // недостоверный путь → fallback от расположения файлов движка.
-        $this->basePath = \Core\System\Security\PathResolver::normalizeRootPath(
-            (string) ($config->get('FS_BASE_PATH') ?? ''),
-            (string) ($config->get('APP_ROOT_PATH') ?? '')
-        );
+        // Корень проекта — единый резолвер (канон — APP_ROOT_PATH,
+        // см. Config::getRootPath() → PathResolver/ProjectRoot).
+        $this->basePath = $config->getRootPath();
         if ($basePath !== null && $basePath !== '') {
             $this->basePath = \Core\System\Security\PathResolver::normalizeRootPath($basePath);
         }

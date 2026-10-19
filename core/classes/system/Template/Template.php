@@ -59,13 +59,8 @@ class Template
         $this->compiler = new TemplateCompiler();
         $this->cspNonce = $cspNonce ?? bin2hex(random_bytes(16));
 
-        // Корень проекта — единый резолвер (APP_ROOT_PATH / ProjectRoot).
-        // APP_BASE_PATH больше не читается: устаревший ключ-призрак,
-        // которого никогда не было в config.env (раньше давал getcwd()).
-        $basePath = \Core\System\Security\PathResolver::normalizeRootPath(
-            (string) ($config->get('FS_BASE_PATH') ?? ''),
-            (string) ($config->get('APP_ROOT_PATH') ?? '')
-        );
+        // Корень проекта — единый резолвер (канон — APP_ROOT_PATH).
+        $basePath = $config->getRootPath();
         $this->templatePath = $basePath . DIRECTORY_SEPARATOR . 'views';
         $cachePath = \Core\System\Security\PathResolver::resolveStorageDir($basePath)
             . DIRECTORY_SEPARATOR . 'cache' . DIRECTORY_SEPARATOR . 'templates';

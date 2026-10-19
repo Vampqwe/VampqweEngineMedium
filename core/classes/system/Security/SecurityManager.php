@@ -63,14 +63,15 @@ class SecurityManager
     }
 
     /**
-     * Нормализация корня проекта из FS_BASE_PATH.
+     * Нормализация корня проекта.
      *
      * @deprecated Используйте \Core\System\Security\PathResolver::normalizeRootPath().
-     *             Метод сохранён как делегат для обратной совместимости.
+     *             Метод сохранён как делегат для обратной совместимости:
+     *             $basePath трактуется как канонический APP_ROOT_PATH.
      */
-    public static function normalizeRootPath(string $basePath): string
+    public static function normalizeRootPath(string $basePath = '', string $legacyHint = ''): string
     {
-        return PathResolver::normalizeRootPath($basePath);
+        return PathResolver::normalizeRootPath($basePath, $legacyHint);
     }
 
     /**
@@ -88,13 +89,9 @@ class SecurityManager
      */
     public static function fromConfig(Config $config, Logger $logger): self
     {
-        // Корень проекта — из единого резолвера (APP_ROOT_PATH / ProjectRoot,
-        // см. PathResolver). FS_BASE_PATH — только устаревший fallback:
-        // …/storage → родитель, недостоверный путь → реальный корень движка.
-        $basePath = PathResolver::normalizeRootPath(
-            (string) ($config->get('FS_BASE_PATH') ?? ''),
-            (string) ($config->get('APP_ROOT_PATH') ?? '')
-        );
+        // Корень проекта — единый резолвер (канон — APP_ROOT_PATH,
+        // см. Config::getRootPath() → PathResolver/ProjectRoot).
+        $basePath = $config->getRootPath();
         $enforceBasePath = $config->getBool('FS_ENFORCE_BASE_PATH', true);
 
         $sensitiveKeys = $config->get('SECURITY_SENSITIVE_KEYS', '');

@@ -31,16 +31,13 @@ class FileSystemServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Корень проекта — единая точка определения (APP_ROOT_PATH /
-        // ProjectRoot, см. PathResolver). FS_BASE_PATH учитывается только
-        // как устаревший fallback. Нормализация запрещает создавать
-        // «проект рядом с проектом» при историческом …/storage-значении.
-        $basePath = \Core\System\Security\PathResolver::normalizeRootPath(
-            (string) ($this->config->get('FS_BASE_PATH') ?? ''),
-            (string) ($this->config->get('APP_ROOT_PATH') ?? '')
-        );
+        // Корень проекта — единая точка определения (канон — APP_ROOT_PATH,
+        // см. Config::getRootPath() → PathResolver/ProjectRoot).
+        // Устаревший FS_BASE_PATH упразднён.
+        $basePath = $this->config->getRootPath();
 
-        $storage = $basePath . DIRECTORY_SEPARATOR . 'storage';
+        // storage/ — всегда от канонического корня APP_ROOT_PATH (единый резолвер).
+        $storage = $this->config->getStoragePath();
         if (!is_dir($storage)) {
             $perm = $this->config->getOctal('FS_DEFAULT_DIR_PERMISSION', 0755);
             @mkdir($storage, $perm, true);
