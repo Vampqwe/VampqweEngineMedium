@@ -1,2 +1,2 @@
-storage/.installed
-storage/.rate_limits/
+storage/cache/
+*.log
