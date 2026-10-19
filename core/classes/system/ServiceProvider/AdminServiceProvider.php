@@ -120,10 +120,14 @@ class AdminServiceProvider extends ServiceProvider
             $container->get(Template::class)
         );
 
+        // ИСПРАВЛЕНО: конструкторы контроллеров требуют SecurityManager
+        // (Pages 3→4, Import 5→6, Menu 2→3). Без него любой GET/POST в этих
+        // разделах админки давал ArgumentCountError (fatal).
         $pagesController = static fn(): PagesController => new PagesController(
             $container->get(PageService::class),
             $container->get(AdminService::class),
-            $container->get(Template::class)
+            $container->get(Template::class),
+            $container->get(SecurityManager::class)
         );
 
         $importController = static fn(): ImportController => new ImportController(
@@ -131,12 +135,14 @@ class AdminServiceProvider extends ServiceProvider
             $container->get(PageService::class),
             $container->get(AdminService::class),
             $container->get(Template::class),
-            $container->get(Config::class)
+            $container->get(Config::class),
+            $container->get(SecurityManager::class)
         );
 
         $menuController = static fn(): MenuController => new MenuController(
             $container->get(MenuAdminService::class),
-            $container->get(Template::class)
+            $container->get(Template::class),
+            $container->get(SecurityManager::class)
         );
 
         // Критическая защита мастера установки: доступ только по ключу

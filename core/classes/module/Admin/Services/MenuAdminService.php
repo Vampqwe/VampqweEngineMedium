@@ -22,6 +22,7 @@ declare(strict_types=1);
 namespace Core\Module\Admin\Services;
 
 use Core\System\DataBase\DataBase;
+use Core\System\Security\HtmlSanitizer;
 
 /**
  * Сервис административного редактора меню.
@@ -155,12 +156,17 @@ class MenuAdminService
 
         $url = trim((string) ($raw['url'] ?? ''));
         if ($url !== '' && $url !== '#') {
+            // ИСПРАВЛЕНО: раньше схема проверялась только внутри ветки
+            // elseif (!preg_match('#^(https?://|/)#i')) — в строке
+            // "javascript:" подшаблон "script:" совпадал с суффиксом
+            // "https?://", поэтому проверка запрещённых схем была недостижима.
+            // Теперь запрещённые схемы проверяются первыми, отдельно от формата.
             if (mb_strlen($url) > 500) {
                 $errors[] = 'URL слишком длинный (максимум 500 символов).';
-            } elseif (!preg_match('#^(https?://|/)#i')) {
-                $errors[] = 'URL должен начинаться с «/» или «http(s)://».';
-            } elseif (preg_match('#^(javascript|data|vbscript|file):#i', $url)) {
+            } elseif (preg_match('#^\s*(javascript|data|vbscript|file)\s*:#i', $url)) {
                 $errors[] = 'Запрещённая схема URL.';
+            } elseif (!preg_match('#^(https?://|/)#i', $url)) {
+                $errors[] = 'URL должен начинаться с «/» или «http(s)://».';
             }
         }
 
@@ -172,6 +178,10 @@ class MenuAdminService
         $cssClass = trim((string) ($raw['css_class'] ?? ''));
         if (mb_strlen($cssClass) > 100) {
             $errors[] = 'CSS-класс слишком длинный (максимум 100 символов).';
+        } elseif ($cssClass !== '' && !preg_match('/^[A-Za-z0-9_\- ]*$/', $cssClass)) {
+            // Whitelist: значение подставляется в атрибут class на фронтенде —
+            // кавычки, угловые скобки и прочие символы отклоняются.
+            $errors[] = 'CSS-класс содержит недопустимые символы (разрешены буквы, цифры, «_», «-» и пробел).';
         }
 
         $note = trim((string) ($raw['note'] ?? ''));
@@ -188,6 +198,13 @@ class MenuAdminService
         if (!empty($errors)) {
             return ['ok' => false, 'errors' => $errors];
         }
+
+        // Defense-in-depth: экранируем текстовые поля перед записью в БД.
+        // Вывод (MenuService::renderHtml) экранирует и раньше, но сырые
+        // HTML-фрагменты больше не хранятся в базе.
+        $title  = HtmlSanitizer::escape($title);
+        $icon   = $icon !== '' ? HtmlSanitizer::escape($icon) : '';
+        $note   = $note !== '' ? HtmlSanitizer::escape($note) : '';
 
         return [
             'ok'     => true,
