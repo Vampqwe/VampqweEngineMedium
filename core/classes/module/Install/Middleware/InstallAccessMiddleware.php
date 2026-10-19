@@ -46,6 +46,10 @@ class InstallAccessMiddleware implements Middleware
 {
     private const RATE_LIMIT_KEY_PREFIX = 'admin:install:';
     private const KEY_HEADER = 'X-Install-Key';
+    /** TTL подтверждения ключа в сессии (секунды). Без TTL украденная до
+     *  подтверждения cookie давала бы бессрочный доступ к мастеру. */
+    private const SESSION_VERIFY_TTL = 1800;
+    private const SESSION_VERIFY_TIME_KEY = 'install_key_verified_at';
 
     public function __construct(
         private readonly InstallService $installService,
@@ -116,11 +120,30 @@ class InstallAccessMiddleware implements Middleware
 
     /**
      * Был ли когда-либо подтверждён ключ активации в текущей сессии браузера.
+     * Флаг действует ограниченное время (SESSION_VERIFY_TTL) — по истечении
+     * TTL ключ требуется снова.
      */
     private function isInstallVerifiedInSession(): bool
     {
-        return session_status() === PHP_SESSION_ACTIVE
-            && $this->session()->get('install_key_verified') === true;
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            return false;
+        }
+
+        if ($this->session()->get('install_key_verified') !== true) {
+            return false;
+        }
+
+        $verifiedAt = (int) $this->session()->get(self::SESSION_VERIFY_TIME_KEY, 0);
+        if ($verifiedAt <= 0 || (time() - $verifiedAt) > self::SESSION_VERIFY_TTL) {
+            // TTL истёк (или флаг записан старой версией без метки времени) —
+            // снимаем полномочие и требуем повторный ввод ключа.
+            $this->session()->remove('install_key_verified');
+            $this->session()->remove(self::SESSION_VERIFY_TIME_KEY);
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -169,6 +192,7 @@ class InstallAccessMiddleware implements Middleware
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
             $this->session()->set('install_key_verified', true);
+            $this->session()->set(self::SESSION_VERIFY_TIME_KEY, time());
         }
     }
 

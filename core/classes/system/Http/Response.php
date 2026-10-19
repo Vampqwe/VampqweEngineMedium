@@ -101,9 +101,35 @@ class Response
      */
     public function setHeader(Header|string $name, string|array $value): self
     {
+        // Защита от HTTP response splitting: значения заголовков не должны
+        // содержать CR/LF. Массивные значения фильтруются рекурсивно.
+        $this->assertHeaderValueSafe($value);
+
         $key = strtolower($name instanceof Header ? $name->value : $name);
         $this->headers[$key] = $value;
         return $this;
+    }
+
+    /**
+     * Проверить значение заголовка на отсутствие переносов строки.
+     *
+     * @throws HttpException при обнаружении CR/LF (header injection)
+     */
+    private function assertHeaderValueSafe(string|array $value): void
+    {
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                $this->assertHeaderValueSafe((string) $item);
+            }
+            return;
+        }
+
+        if (str_contains($value, "\r") || str_contains($value, "\n")) {
+            throw new HttpException(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                'Заголовок ответа не может содержать символы переноса строки (CR/LF).'
+            );
+        }
     }
 
     /**
@@ -304,10 +330,31 @@ class Response
         $response = new self('', StatusCode::OK);
         $response->setHeader(Header::CONTENT_TYPE, $mimeType);
         $response->setHeader(Header::CONTENT_LENGTH, (string) $fileSize);
-        $response->setHeader(Header::CONTENT_DISPOSITION, "attachment; filename=\"{$fileName}\"");
+        $response->setHeader(Header::CONTENT_DISPOSITION, 'attachment; filename="' . self::sanitizeDownloadFilename($fileName) . '"');
         $response->filePath = $filePath;
 
         return $response;
+    }
+
+    /**
+     * Очистить имя файла для заголовка Content-Disposition.
+     *
+     * Удаляет управляющие символы (включая CR/LF — защита от HTTP header
+     * injection), кавычки и обратные слеши, ограничивает длину.
+     */
+    private static function sanitizeDownloadFilename(string $fileName): string
+    {
+        // Только basename — исключаем пути/переходы на другие директории
+        $fileName = basename($fileName);
+        // Убираем управляющие символы (\r, \n, \0 и т.п.), кавычки и слеши
+        $fileName = preg_replace('/[\x00-\x1F\x7F"\\\\\/]/u', '', $fileName) ?? '';
+        // Ограничиваем разумную длину имени
+        if (strlen($fileName) > 200) {
+            $ext = pathinfo($fileName, PATHINFO_EXTENSION);
+            $fileName = substr(pathinfo($fileName, PATHINFO_FILENAME), 0, 180) . ($ext !== '' ? '.' . substr($ext, 0, 16) : '');
+        }
+
+        return $fileName !== '' ? $fileName : 'download';
     }
 
     /**

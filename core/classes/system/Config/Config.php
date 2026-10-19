@@ -46,7 +46,13 @@ final class Config
             throw FileSystemException::permissionDenied($envPath);
         }
 
-        // Проверка прав доступа (только для Unix-систем)
+        // Проверка прав доступа (только для Unix-систем).
+        // Единая политика прав config.env реализована в
+        // SecurityManager::checkConfigPermissions() (допускаются только
+        // владелец rw и группа r — максимум 0640, управляется флагом
+        // SECURITY_ENFORCE_CONFIG_PERMS). Здесь проверяется только самый
+        // опасный случай — доступ «для всех» (world access), поскольку
+        // конструктор Config выполняется до инициализации SecurityManager.
         if (DIRECTORY_SEPARATOR !== '\\') {
             $perms = fileperms($envPath) & 0777;
 

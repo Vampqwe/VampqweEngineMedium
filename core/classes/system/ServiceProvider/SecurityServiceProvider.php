@@ -72,7 +72,11 @@ class SecurityServiceProvider extends ServiceProvider
      */
     private function startSession(): void
     {
-        $secure = $this->config->getBool('SESSION_COOKIE_SECURE', false);
+        // Единый дефолт для SESSION_COOKIE_SECURE: безопасное значение true
+        // (исторически здесь стоял false, что расходилось с SessionManager::destroy(),
+        // где дефолт true — при пустом/отсутствующем значении в config.env куки
+        // уходят без флага Secure). Конкретные значения задаются в config.env.
+        $secure = $this->config->getBool('SESSION_COOKIE_SECURE', true);
         $sameSite = ucfirst(strtolower(
             $this->config->get('SESSION_COOKIE_SAMESITE', 'Lax') ?? 'Lax'
         ));
