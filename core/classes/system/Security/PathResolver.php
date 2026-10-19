@@ -26,9 +26,13 @@ use Core\System\Application\ProjectRoot;
  * Единая точка нормализации корня проекта.
  *
  * Каноническая настройка — APP_ROOT_PATH (абсолютный путь к корню
- * проекта). FS_BASE_PATH поддерживается только как устаревший
- * historical-fallback (значение могло указывать на storage/).
- * Теперь все потребители вызывают PathResolver::normalizeRootPath().
+ * проекта). Все потребители базового пути вызывают этот резолвер
+ * (напрямую или через Config::getRootPath()/Config::getStoragePath()).
+ *
+ * FS_BASE_PATH упразднён: исторически он задавал путь к storage/, а не
+ * к корню проекта, и являлся источником расхождения путей. Если ключ
+ * всё ещё остался в старом config.env, он читается ТОЛЬКО как
+ * last-resort-подсказка (см. п. 4) и подлежит удалению из конфига.
  */
 final class PathResolver
 {
@@ -37,15 +41,18 @@ final class PathResolver
      *
      * Источники по приоритету:
      *  1. зафиксированный ProjectRoot (Application::init / VCORE_ROOT);
-     *  2. APP_ROOT_PATH из config.env (аргумент $configRoot);
-     *  3. устаревший FS_BASE_PATH (аргумент $legacyRoot): …/storage →
-     *     родитель, недостоверный путь → отбрасывается;
-     *  4. fallback — реальный корень проекта от расположения файлов движка.
+     *  2. APP_ROOT_PATH из config.env (аргумент $configRoot) — канонический;
+     *  3. ProjectRoot::get() — детекция APP_ROOT_PATH из config.env рядом
+     *     с движком / fallback от расположения файлов движка;
+     *  4. legacy-подсказка (аргумент $legacyHint, устаревший FS_BASE_PATH):
+     *     используется, только если корень ещё НЕ зафиксирован и значение
+     *     указывает на существующий каталог storage/ внутри проекта
+     *     (…/storage → родитель). Иначе — отбрасывается.
      *
      * @param string $configRoot Значение APP_ROOT_PATH из конфига ('' если нет).
-     * @param string $legacyRoot Значение устаревшего FS_BASE_PATH ('' если нет).
+     * @param string $legacyHint Значение устаревшего FS_BASE_PATH ('' если нет).
      */
-    public static function normalizeRootPath(string $basePath = '', string $configRoot = ''): string
+    public static function normalizeRootPath(string $configRoot = '', string $legacyHint = ''): string
     {
         // 1. Явно зафиксированный корень приложения имеет высший приоритет.
         $fixed = ProjectRoot::current();
@@ -59,20 +66,20 @@ final class PathResolver
             return $configRoot;
         }
 
-        $basePath = rtrim($basePath, '/\\');
+        // 3. Резолвер единой точки определения (config.env рядом с движком,
+        //    затем физический корень движка). Legacy-подсказка его не перебивает.
+        $detected = ProjectRoot::get();
 
-        // 3. Устаревший FS_BASE_PATH: допускался в формате пути к storage/.
-        if ($basePath !== '' && is_dir($basePath)
-            && strtolower(basename($basePath)) === 'storage') {
-            return dirname($basePath);
+        // 4. Last-resort: если ProjectRoot ещё ничего не нашёл (не зафиксирован
+        //    и не определён), допускается вывод корня из старого …/storage-значения
+        //    FS_BASE_PATH — для обратной совместимости с неисправленными config.env.
+        $legacyHint = rtrim($legacyHint, '/\\');
+        if ($legacyHint !== '' && !is_dir($detected)
+            && is_dir($legacyHint) && strtolower(basename($legacyHint)) === 'storage') {
+            return dirname($legacyHint);
         }
 
-        if ($basePath !== '' && is_dir($basePath) && is_file($basePath . DIRECTORY_SEPARATOR . 'index.php')) {
-            return $basePath;
-        }
-
-        // 4. Недостоверный путь — fallback на реальный корень проекта.
-        return ProjectRoot::fallbackRoot();
+        return $detected;
     }
 
     /**
