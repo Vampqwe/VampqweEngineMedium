@@ -47,25 +47,33 @@ final class Config
         }
 
         // Проверка прав доступа (только для Unix-систем).
-        // Единая политика прав config.env реализована в
-        // SecurityManager::checkConfigPermissions() (допускаются только
-        // владелец rw и группа r — максимум 0640, управляется флагом
-        // SECURITY_ENFORCE_CONFIG_PERMS). Здесь проверяется только самый
-        // опасный случай — доступ «для всех» (world access), поскольку
-        // конструктор Config выполняется до инициализации SecurityManager.
-        if (DIRECTORY_SEPARATOR !== '\\') {
-            $perms = fileperms($envPath) & 0777;
-
-            // Права не должны позволять чтение/запись всем
-            if (($perms & 0007) !== 0) {
-                throw SecurityException::configPermissionsInvalid($envPath, $perms, 0640);
-            }
-        }
-
+        // Единая политика: максимум 0640 (владелец rw, группа r), управляется
+        // флагом SECURITY_ENFORCE_CONFIG_PERMS. Флаг читается прямым
+        // препросмотром файла — значения ещё не распарсены.
+        // SecurityManager::checkConfigPermissions() применяет то же правило
+        // повторно после загрузки конфига.
         $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 
         if ($lines === false) {
             throw new FileSystemException("Не удалось прочитать файл: {$envPath}");
+        }
+
+        if (DIRECTORY_SEPARATOR !== '\\') {
+            $perms = fileperms($envPath) & 0777;
+
+            $enforcePerms = true;
+
+            foreach ($lines as $line) {
+                if (preg_match('/^\s*SECURITY_ENFORCE_CONFIG_PERMS\s*=\s*(.+)$/', trim($line), $m)) {
+                    $enforcePerms = !in_array(strtolower(trim($m[1], " \t\"'")), ['false', '0', 'no', 'off'], true);
+                    break;
+                }
+            }
+
+            // World-access запрещён безусловно, даже при выключенном флаге.
+            if (($perms & 0007) !== 0 || ($enforcePerms && (($perms & ~0640) !== 0))) {
+                throw SecurityException::configPermissionsInvalid($envPath, $perms, 0640);
+            }
         }
 
         foreach ($lines as $line) {
@@ -178,29 +186,68 @@ final class Config
         return $this->values[$key] ?? $default;
     }
 
+    /**
+     * Целочисленное значение конфига.
+     *
+     * Пустое значение или мусор (не парсящийся в число) возвращает $default —
+     * раньше (int)"abc" молча давало 0, игнорируя семантику «default при отсутствии».
+     */
     public function getInt(string $key, int $default = 0): int
     {
         $value = $this->get($key);
 
-        return $value !== null ? (int) $value : $default;
+        if ($value === null || $value === '') {
+            return $default;
+        }
+
+        // Строгое распознавание: опциональный знак + цифры (без хвостового мусора)
+        if (!preg_match('/^[+-]?\d+$/', trim($value))) {
+            return $default;
+        }
+
+        return (int) trim($value);
     }
 
+    /**
+     * Булево значение конфига.
+     *
+     * Распознаются true/1/yes/on и false/0/no/off (регистронезависимо).
+     * Пустое значение или мусор возвращают $default вместо тихого false.
+     */
     public function getBool(string $key, bool $default = false): bool
     {
         $value = $this->get($key);
 
-        if ($value === null) {
+        if ($value === null || $value === '') {
             return $default;
         }
 
-        return in_array(strtolower($value), ['true', '1', 'yes', 'on'], true);
+        return match (strtolower(trim($value))) {
+            'true', '1', 'yes', 'on'  => true,
+            'false', '0', 'no', 'off' => false,
+            default                   => $default,
+        };
     }
 
+    /**
+     * Восьмеричное значение (права доступа), например "0755" или "755".
+     * Некорректный ввод возвращает $default.
+     */
     public function getOctal(string $key, int $default = 0644): int
     {
         $value = $this->get($key);
 
-        return $value !== null ? octdec($value) : $default;
+        if ($value === null || $value === '') {
+            return $default;
+        }
+
+        $value = trim($value);
+
+        if (!preg_match('/^0?[0-7]{3,4}$/', $value)) {
+            return $default;
+        }
+
+        return (int) octdec($value);
     }
 
     /**

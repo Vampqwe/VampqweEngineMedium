@@ -24,6 +24,7 @@ namespace Core\System\Http;
 
 use Core\System\Config\Config;
 use Core\System\Map\Map;
+use Core\System\Security\SecurityException;
 use Core\System\Security\TrustedProxy;
 
 /**
@@ -196,6 +197,14 @@ class Request
             'trim',
             explode(',', strtolower((string) $this->config->get('APP_ALLOWED_HOSTS', '')))
         ));
+
+        // В production пустой allowlist недопустим: клиентский Host уходит
+        // в генерацию URL/редиректы без проверки (cache poisoning, фишинг).
+        if ($allowed === [] && !$this->config->getBool('APP_DEBUG', false)) {
+            throw new SecurityException(
+                'APP_ALLOWED_HOSTS пуст в production: добавьте разрешённые домены в config.env'
+            );
+        }
 
         if ($allowed !== []) {
             $normalized = strtolower(preg_replace('/:\d+$/', '', $host) ?? $host);
