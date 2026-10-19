@@ -30,9 +30,9 @@ use Core\System\Application\ProjectRoot;
  * (напрямую или через Config::getRootPath()/Config::getStoragePath()).
  *
  * FS_BASE_PATH упразднён: исторически он задавал путь к storage/, а не
- * к корню проекта, и являлся источником расхождения путей. Если ключ
- * всё ещё остался в старом config.env, он читается ТОЛЬКО как
- * last-resort-подсказка (см. п. 4) и подлежит удалению из конфига.
+ * к корню проекта, и являлся источником расхождения путей. Ключ больше
+ * НЕ читается движком ни при каких условиях — удалите его из старых
+ * config.env.
  */
 final class PathResolver
 {
@@ -118,18 +118,52 @@ final class PathResolver
             $path
         ) ?? '';
 
-        // Обычный относительный путь тоже режем на сегменты и пересобираем.
-        $segments = $relative === ''
-            ? []
-            : array_filter(explode('/', str_replace('\\', '/', $relative)), static fn($s) => $s !== '' && $s !== '.');
+        /*
+         * КРИТИЧЕСКАЯ ЗАЩИТА ОТ PATH TRAVERSAL: путь из config.env никогда не
+         * должен выходить за пределы корня проекта. Иначе злоумышленник,
+         * контролирующий конфиг (LOG_FILE, SECURITY_AUDIT_FILE и т.п.),
+         * получает запись файлов вне корня (→ RCE через подмену шаблонов/кэша).
+         *
+         * Правила:
+         *  - все ведущие «..» игнорируются (они поднимают путь выше корня);
+         *  - вложенные «..» погашаются строго до границ корня (не ниже);
+         *  - Windows-префикс диска/UNC («h:», «\\server\share») — нижняя
+         *    граница, срезать его нельзя.
+         */
+        $normalizedSlashes = str_replace('\\', '/', $relative);
+        $rawSegments = array_values(
+            array_filter(
+                explode('/', $normalizedSlashes),
+                static fn(string $s): bool => $s !== '' && $s !== '.'
+            )
+        );
+
+        $leadingParentCount = 0;
+        foreach ($rawSegments as $seg) {
+            if ($seg === '..') {
+                $leadingParentCount++;
+            } else {
+                break;
+            }
+        }
+
+        // Ведущие «..» отбрасываем целиком: они вывели бы путь за корень.
+        $segments = array_slice($rawSegments, $leadingParentCount);
 
         $parts = $root === '' ? [] : array_values(array_filter(explode('/', $root), static fn($s) => $s !== ''));
         // Первый сегмент Windows-корня (h:) сохраняем как есть.
+        $rootHasPrefix = self::isWindowsRootPrefix($parts[0] ?? '');
+        // Глубина корня: нижняя граница, ниже которой «..» срезать нельзя.
+        $rootDepth = count($parts);
 
         foreach ($segments as $segment) {
             if ($segment === '..') {
-                // Не выходим за пределы корня проекта.
-                if (count($parts) > (self::isWindowsRootPrefix($parts[0] ?? '') ? 1 : 0)) {
+                // Не выходим за пределы корня проекта: погашаем «..» только
+                // если под ним есть добавленный к корню сегмент.
+                if (count($parts) > $rootDepth) {
+                    array_pop($parts);
+                } elseif (!$rootHasPrefix && $root === '' && $parts !== []) {
+                    // Корень не задан («.»): разрешаем подъём внутри относительного пути.
                     array_pop($parts);
                 }
                 continue;
@@ -148,7 +182,15 @@ final class PathResolver
 
         $joined = implode('/', $parts);
 
-        // Windows-диск: h:/path → h:\path (сохраняем исходный стиль корня).
+        // Unix-абсолютный корень (/var/www/...): сохраняем ведущий слэш.
+        if ($root !== '' && str_starts_with($root, '/') && !self::isWindowsRootPrefix($parts[0])) {
+            $joined = '/' . $joined;
+        }
+
+        // Windows-диск/UNC: «h:/Server/app» после разделения превращается в
+        // сегменты ['h:', 'Server', 'app'], где первый («h:») — префикс диска.
+        // Склейка через '/' даёт «h:/Server/app», но сам префикс нужно
+        // восстановить как есть (включая возможный UNC-префикс '\\server\share').
         if (self::isWindowsRootPrefix($parts[0])) {
             $joined = $parts[0] . substr($joined, strlen($parts[0]));
         }
