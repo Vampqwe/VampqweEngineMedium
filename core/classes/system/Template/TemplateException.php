@@ -9,7 +9,7 @@ declare(strict_types=1);
  * @author     [Дедюля Александр Иванович / VampqweEngine]
  * @license    Proprietary
  * @link       https://github.com/Vampqwe/VampqweEngine.git
- * @email	   doktor_try@mail.ru
+ * @contact      Указывается в LICENSE-файле дистрибутива
  *
  * Данный код является интеллектуальной собственностью автора.
  * Любое копирование, распространение, модификация или использование
