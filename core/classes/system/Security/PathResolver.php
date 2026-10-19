@@ -30,9 +30,9 @@ use Core\System\Application\ProjectRoot;
  * (напрямую или через Config::getRootPath()/Config::getStoragePath()).
  *
  * FS_BASE_PATH упразднён: исторически он задавал путь к storage/, а не
- * к корню проекта, и являлся источником расхождения путей. Если ключ
- * всё ещё остался в старом config.env, он читается ТОЛЬКО как
- * last-resort-подсказка (см. п. 4) и подлежит удалению из конфига.
+ * к корню проекта, и являлся источником расхождения путей. Ключ больше
+ * НЕ читается движком ни при каких условиях — удалите его из старых
+ * config.env.
  */
 final class PathResolver
 {
@@ -147,6 +147,11 @@ final class PathResolver
         }
 
         $joined = implode('/', $parts);
+
+        // Unix-абсолютный корень (/var/www/...): сохраняем ведущий слэш.
+        if ($root !== '' && str_starts_with($root, '/') && !self::isWindowsRootPrefix($parts[0])) {
+            $joined = '/' . $joined;
+        }
 
         // Windows-диск: h:/path → h:\path (сохраняем исходный стиль корня).
         if (self::isWindowsRootPrefix($parts[0])) {
