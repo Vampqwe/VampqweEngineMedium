@@ -43,7 +43,8 @@ class FileSystemServiceProvider extends ServiceProvider
             @mkdir($storage, $perm, true);
         }
 
-        $logs = $basePath . DIRECTORY_SEPARATOR . 'logs';
+        // logs/ — всегда от канонического корня APP_ROOT_PATH (единый резолвер).
+        $logs = $this->config->getLogsPath();
         if (!is_dir($logs)) {
             $perm = $this->config->getOctal('FS_DEFAULT_DIR_PERMISSION', 0755);
             @mkdir($logs, $perm, true);

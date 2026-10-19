@@ -289,7 +289,7 @@ DDL: `database/structure.sql` (только CREATE TABLE + индексы + FK, 
 
 1. Требования: PHP ≥ 8.1 (extensions: pdo_mysql, dom, mbstring обычно есть), MySQL/MariaDB, Apache (mod_rewrite) или любой сервер с front-controller правилом. Composer — только для генерации автозагрузчика: `composer dump-autoload` (пакетов нет).
 2. `cp config.env.example config.env` и заполнить:
-   - `APP_ROOT_PATH` — абсолютный путь к **корню проекта** (каталог с `index.php`; НЕ к `storage/`!) — единственная каноническая настройка базового пути; устаревший `FS_BASE_PATH` упразднён (читается лишь как last-resort-подсказка для старых конфигов, удалите его);
+   - `APP_ROOT_PATH` — абсолютный путь к **корню проекта** (каталог с `index.php`; НЕ к `storage/`!) — единственная каноническая настройка базового пути; устаревший `FS_BASE_PATH` полностью упразднён и больше не читается (удалите его из старых `config.env`); все файловые пути конфига (`LOG_FILE`, `SECURITY_AUDIT_FILE`) разрешаются относительно корня — ведущий `/` означает корень проекта, напр. `LOG_FILE=/log/app.log`;
    - `DB_*` — параметры MySQL;
    - `SUPER_ADMIN_EMAIL/PASSWORD` — хэш пароля (см. §6);
    - `APP_BASE_URL`, `APP_ALLOWED_HOSTS`, `APP_NAME`;

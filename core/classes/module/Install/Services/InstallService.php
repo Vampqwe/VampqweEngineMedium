@@ -94,7 +94,7 @@ class InstallService
      */
     private function loadOrCreateSeed(): string
     {
-        $path = $this->basePath . '/' . self::SEED_FILE;
+        $path = $this->config->getStoragePath(basename(self::SEED_FILE));
 
         if (is_readable($path)) {
             $stored = trim((string) @file_get_contents($path));
@@ -144,7 +144,7 @@ class InstallService
     public function storeActivationKeyHash(string $key): bool
     {
         $hash = hash_hmac('sha256', $key, $this->hmacKey);
-        $path = $this->basePath . '/storage/.install_key';
+        $path = $this->config->getStoragePath('.install_key');
 
         return file_put_contents($path, $hash, LOCK_EX) !== false
             && @chmod($path, 0600);
@@ -155,7 +155,7 @@ class InstallService
      */
     public function verifyStoredActivationKey(string $providedKey): bool
     {
-        $path = $this->basePath . '/storage/.install_key';
+        $path = $this->config->getStoragePath('.install_key');
         if ($providedKey === '' || !is_readable($path)) {
             return false;
         }
@@ -479,7 +479,8 @@ class InstallService
         $content .= "db_name={$dbConfig['name']}\n";
         $content .= "db_host={$dbConfig['host']}\n";
 
-        $storageDir = $this->basePath . '/storage';
+        // storage/ — от канонического корня APP_ROOT_PATH (единый резолвер).
+        $storageDir = $this->config->getStoragePath();
         if (!is_dir($storageDir)) {
             mkdir($storageDir, 0755, true);
         }
@@ -584,7 +585,7 @@ class InstallService
         // считается «установлен») — и мастер установки отвечал 403 «Установка
         // уже выполнена» даже на пустом сервере без .installed: путь к
         // первичной установке блокировался из-за временного сбоя сети/БД.
-        return file_exists($this->basePath . '/storage/.installed');
+        return file_exists($this->config->getStoragePath('.installed'));
     }
 
     /**
@@ -610,7 +611,7 @@ class InstallService
         try {
             return Application::getInstance()->make(InstalledGuard::class)->state();
         } catch (Throwable) {
-            return file_exists($this->basePath . '/storage/.installed')
+            return file_exists($this->config->getStoragePath('.installed'))
                 ? EngineState::DbUnreachable
                 : EngineState::NotInstalled;
         }
