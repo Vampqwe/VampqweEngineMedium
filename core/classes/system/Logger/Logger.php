@@ -9,7 +9,7 @@ declare(strict_types=1);
  * @author     [Дедюля Александр Иванович / VampqweEngine]
  * @license    Proprietary
  * @link       https://github.com/Vampqwe/VampqweEngine.git
- * @email	   doktor_try@mail.ru
+ * @contact      Указывается в LICENSE-файле дистрибутива
  *
  * Данный код является интеллектуальной собственностью автора.
  * Любое копирование, распространение, модификация или использование
@@ -403,21 +403,30 @@ private function formatMessage(LogLevel $level, string $message, array $context 
         $dir = dirname($this->logFile);
 
         if (!is_dir($dir)) {
-            $dirPerm = $this->config->getOctal('FS_DEFAULT_DIR_PERMISSION', 0755);
+            // Логи могут содержать персональные данные и внутренние пути —
+            // каталог создаётся с правами 0750 (без group/world доступа на чтение).
+            $dirPerm = 0750;
 
             if (!mkdir($dir, $dirPerm, true) && !is_dir($dir)) {
                 throw LoggerException::directoryCreationFailed($dir);
             }
+            @chmod($dir, $dirPerm);
         }
 
         if (!is_writable($dir)) {
             throw LoggerException::fileNotWritable($this->logFile);
         }
 
+        $existed = is_file($this->logFile);
         $this->stream = fopen($this->logFile, 'ab');
 
         if ($this->stream === false) {
             throw LoggerException::fileNotWritable($this->logFile);
+        }
+
+        // Файл лога создаётся/открывается с правами 0640: читает только веб-группа.
+        if (!$existed) {
+            @chmod($this->logFile, 0640);
         }
     }
 

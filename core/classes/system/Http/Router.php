@@ -9,7 +9,7 @@ declare(strict_types=1);
  * @author     [Дедюля Александр Иванович / VampqweEngine]
  * @license    Proprietary
  * @link       https://github.com/Vampqwe/VampqweEngine.git
- * @email	   doktor_try@mail.ru
+ * @contact      Указывается в LICENSE-файле дистрибутива
  *
  * Данный код является интеллектуальной собственностью автора.
  * Любое копирование, распространение, модификация или использование
@@ -141,27 +141,45 @@ class Router
      */
     public function dispatch(): Response
     {
+        // Ищем совпадающий маршрут. Проход в два этапа: сначала статические
+        // пути (без {param}) — они имеют приоритет над шаблонными независимо
+        // от порядка регистрации (пример: '/menu/items' должен выигрывать у
+        // '/menu/items/{id}', даже если последний зарегистрирован раньше).
+        $matched = [];
         $allowedMethods = [];
 
-        // Ищем совпадающий маршрут
-        foreach ($this->routes as $route) {
-            if (!$route->matchesPath($this->request)) {
-                continue;
+        foreach ([false, true] as $staticOnly) {
+            foreach ($this->routes as $route) {
+                if ($staticOnly && $this->routeIsDynamic($route)) {
+                    continue;
+                }
+
+                if (!$route->matchesPath($this->request)) {
+                    continue;
+                }
+
+                foreach ($route->getMethods() as $method) {
+                    $allowedMethods[$method->value] = $method->value;
+                }
+
+                if ($route->matches($this->request)) {
+                    $matched[] = $route;
+                }
             }
 
-            foreach ($route->getMethods() as $method) {
-                $allowedMethods[$method->value] = $method->value;
+            if ($matched !== []) {
+                break;
             }
+        }
 
-            if ($route->matches($this->request)) {
-                $this->currentRoute = $route;
+        foreach ($matched as $route) {
+            $this->currentRoute = $route;
 
-                // Пропускаем через глобальный middleware + middleware маршрута
-                return $this->globalMiddleware->process(
-                    $this->request,
-                    fn(Request $req) => $route->execute($req)
-                );
-            }
+            // Пропускаем через глобальный middleware + middleware маршрута
+            return $this->globalMiddleware->process(
+                $this->request,
+                fn(Request $req) => $route->execute($req)
+            );
         }
 
         if ($allowedMethods !== []) {
@@ -182,6 +200,14 @@ class Router
         }
 
         return Response::html('<h1>404 Not Found</h1>', StatusCode::NOT_FOUND);
+    }
+
+    /**
+     * Маршрут содержит хотя бы один параметр вида {param}.
+     */
+    private function routeIsDynamic(Route $route): bool
+    {
+        return (bool) preg_match('/\{[a-zA-Z_][a-zA-Z0-9_]*\}/', $route->getPath());
     }
 
     // ─── URL генерация ───
