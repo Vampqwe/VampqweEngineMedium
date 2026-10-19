@@ -43,11 +43,22 @@ class CsrfMiddleware implements Middleware
     {
         if (!$request->isSafe()) {
             // Токен принимается из поля формы (_csrf_token) либо AJAX-заголовка
-            // X-CSRF-Token. Пустое значение невалидно — validateCsrf('') вернёт false.
+            // X-CSRF-Token. Пустой/отсутствующий токен считается невалидным;
+            // CsrfToken::validate() бросает SecurityException — перехватываем его
+            // здесь, чтобы вернуть единый UX (flash + редирект), а не HTTP 500.
             $headerToken = $request->getHeader(Header::X_CSRF_TOKEN);
             $token = trim((string) ($request->input('_csrf_token', '') ?: ($headerToken ?? '')));
 
-            if (!$this->security->validateCsrf($token)) {
+            $valid = false;
+            if ($token !== '') {
+                try {
+                    $valid = $this->security->validateCsrf($token);
+                } catch (\Throwable) {
+                    $valid = false;
+                }
+            }
+
+            if (!$valid) {
                 // Единый UX с контроллерами админки: flash + редирект назад.
                 $this->flash?->setFlash(
                     'error',
