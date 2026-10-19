@@ -1,2 +1,4 @@
-storage/cache/
-*.log
+config.env
+storage/.install_key
+storage/.install_seed
+logs/
