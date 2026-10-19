@@ -39,6 +39,9 @@ class Router
     /** @var array<string, Route> Именованные маршруты */
     private array $namedRoutes = [];
 
+    /** Флаг ленивой синхронизации карты имён (см. url()) */
+    private bool $namedRoutesSynced = false;
+
     private MiddlewareStack $globalMiddleware;
     private ?Route $currentRoute = null;
 
@@ -188,7 +191,7 @@ class Router
      */
     public function url(string $name, array $parameters = []): string
     {
-        if (!isset($this->namedRoutes[$name])) {
+        if (!isset($this->namedRoutes[$name]) && !$this->namedRoutesSynced) {
             // Лень-синхронизация: имена проставляются fluent-методом
             // Route::name() ПОСЛЕ addRoute(), поэтому карта на момент
             // регистрации пуста. Пересобираем один раз при первом запросе
@@ -205,7 +208,11 @@ class Router
         $path = $route->getPath();
 
         foreach ($parameters as $key => $value) {
-            $path = str_replace('{' . $key . '}', (string) $value, $path);
+            // Параметры подставляются в URL — экранируем спецсимволы и срезаем
+            // слэши, чтобы значение не ломало структуру пути (SSRF/открытый redirect).
+            $safe = rawurlencode((string) $value);
+            $safe = str_replace(['/', '\\', '?', '#'], '', $safe);
+            $path = str_replace('{' . $key . '}', $safe, $path);
         }
 
         $path = preg_replace('/\{[a-zA-Z_][a-zA-Z0-9_]*\}/', '', $path);
@@ -245,14 +252,29 @@ class Router
     /** @return array<string, Route> */
     public function getNamedRoutes(): array
     {
-        $this->syncNamedRoutes();
+        $this->ensureNamedRoutesSynced();
         return $this->namedRoutes;
     }
 
     public function hasRoute(string $name): bool
     {
-        $this->syncNamedRoutes();
+        if (!isset($this->namedRoutes[$name])) {
+            $this->ensureNamedRoutesSynced();
+        }
         return isset($this->namedRoutes[$name]);
+    }
+
+    /**
+     * Пересобрать карту имён один раз (маршруты после boot не меняются).
+     * addRoute() кладёт имя сразу, но Route::name() вызывается fluent-методом
+     * ПОСЛЕ регистрации — поэтому нужна ленивая дозаполняющая синхронизация.
+     */
+    private function ensureNamedRoutesSynced(): void
+    {
+        if (!$this->namedRoutesSynced) {
+            $this->syncNamedRoutes();
+            $this->namedRoutesSynced = true;
+        }
     }
 
     private function syncNamedRoutes(): void
@@ -260,7 +282,11 @@ class Router
         $this->namedRoutes = [];
         foreach ($this->routes as $route) {
             if ($route->getName() !== '') {
-                $this->namedRoutes[$route->getName()] = $route;
+                // Первый wins: при дублировании имени не даём поздней
+                // регистрации молча подменить маршрут целевого URL.
+                if (!isset($this->namedRoutes[$route->getName()])) {
+                    $this->namedRoutes[$route->getName()] = $route;
+                }
             }
         }
     }

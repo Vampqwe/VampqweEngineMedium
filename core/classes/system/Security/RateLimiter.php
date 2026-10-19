@@ -69,6 +69,9 @@ class RateLimiter
     try {
         $file = $this->getFilePath($key);
         $handle = fopen($file, 'c+');
+        // Файлы-счётчики создаются на 0640: только владелец и группа веб-сервера,
+        // без всемирного чтения (umask по умолчанию дал бы 666/644).
+        @chmod($file, 0640);
         if ($handle === false) {
             throw new \RuntimeException("Не удалось открыть файл rate limit: {$file}");
         }
@@ -331,14 +334,15 @@ class RateLimiter
             return;
         }
 
-        if (!mkdir($this->storagePath, 0755, true) && !is_dir($this->storagePath)) {
+        // 0750 вместо унаследованного umask: каталог с файлами-счётчиками
+        // не должен читаться другими пользователями хоста (перечисление IP,
+        // подделка состояния лимитов локальным процессом).
+        if (!@mkdir($this->storagePath, 0750, true) && !is_dir($this->storagePath)) {
             throw new \RuntimeException("Не удалось создать каталог rate limit: {$this->storagePath}");
         }
+        @chmod($this->storagePath, 0750);
     }
 
-    /**
-     * Очистить устаревшие файлы
-     */
     /**
      * Запускает cleanupExpired не чаще одного раза в CLEANUP_INTERVAL_SECONDS.
      * Отметка хранится во временном файле-маркере — решение переживает
